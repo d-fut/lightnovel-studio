@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TuringScript — ラノベ制作AIパイプライン</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600;900&family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Navigation -->
+  <nav id="nav">
+    <div class="nav-brand">
+      <span class="brand-jp">チューリング・スクリプト</span>
+      <span class="brand-en">TuringScript</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-page="pipeline">制作パイプライン</button>
+      <button class="nav-tab" data-page="settings">設定</button>
+      <button class="nav-tab" data-page="templates">テンプレート</button>
+      <button class="nav-tab" data-page="export">エクスポート</button>
+      <button class="nav-tab" data-page="help">ヘルプ</button>
+    </div>
+    <div class="nav-status">
+      <span id="nav-project-name">無題プロジェクト</span>
+      <span id="nav-api-status" class="status-dot offline"></span>
+    </div>
+  </nav>
+
+  <!-- Pages -->
+  <main id="main-content">
+    <!-- Pipeline Page -->
+    <div id="page-pipeline" class="page active">
+      <div class="pipeline-layout">
+        <!-- Stage Sidebar -->
+        <aside class="stage-sidebar">
+          <div class="sidebar-header">
+            <div class="total-chars-display">
+              <span class="label">総字数目標</span>
+              <span id="total-chars-display">—</span>
+            </div>
+          </div>
+          <div class="stage-list">
+            <div class="stage-item" data-stage="0" id="stage-nav-0">
+              <span class="stage-num">INIT</span>
+              <span class="stage-name">プロジェクト設定</span>
+              <span class="stage-status-icon">●</span>
+            </div>
+            <div class="stage-item locked" data-stage="1" id="stage-nav-1">
+              <span class="stage-num">01</span>
+              <span class="stage-name">コンセプト・世界観</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="2" id="stage-nav-2">
+              <span class="stage-num">02</span>
+              <span class="stage-name">プロット構築</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="3" id="stage-nav-3">
+              <span class="stage-num">03</span>
+              <span class="stage-name">キャラクター設計</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="4" id="stage-nav-4">
+              <span class="stage-num">04</span>
+              <span class="stage-name">章立て・構成</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="5" id="stage-nav-5">
+              <span class="stage-num">05</span>
+              <span class="stage-name">章ごとの下書き</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="6" id="stage-nav-6">
+              <span class="stage-num">06</span>
+              <span class="stage-name">整合性チェック</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="7" id="stage-nav-7">
+              <span class="stage-num">07</span>
+              <span class="stage-name">文体統一・改稿</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="8" id="stage-nav-8">
+              <span class="stage-num">08</span>
+              <span class="stage-name">最終仕上げ</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+            <div class="stage-item locked" data-stage="9" id="stage-nav-9">
+              <span class="stage-num">VIS</span>
+              <span class="stage-name">ビジュアル生成</span>
+              <span class="stage-status-icon">○</span>
+            </div>
+          </div>
+          <!-- Noun List -->
+          <div class="noun-panel">
+            <div class="noun-header">
+              <span>固有名詞リスト</span>
+              <button id="add-noun-btn" class="btn-icon">＋</button>
+            </div>
+            <div id="noun-list" class="noun-list"></div>
+          </div>
+        </aside>
+
+        <!-- Stage Content -->
+        <div class="stage-content" id="stage-content">
+          <!-- Dynamically loaded -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Page -->
+    <div id="page-settings" class="page">
+      <div class="settings-container">
+        <h1 class="page-title">設定</h1>
+        <div class="settings-grid">
+          <section class="settings-section">
+            <h2>API設定</h2>
+            <div class="form-group">
+              <label>APIキー</label>
+              <div class="api-key-input">
+                <input type="password" id="api-key-input" placeholder="sk-ant-..." autocomplete="off">
+                <button id="toggle-key-btn" class="btn-secondary btn-sm">表示</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>使用モデル</label>
+              <select id="model-select">
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4（推奨）</option>
+                <option value="claude-opus-4-20250514">Claude Opus 4（高精度）</option>
+                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5（高速）</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>最大トークン数</label>
+              <input type="number" id="max-tokens-input" value="4000" min="1000" max="8000" step="500">
+            </div>
+            <button id="save-settings-btn" class="btn-primary">設定を保存</button>
+            <button id="test-api-btn" class="btn-secondary">API接続テスト</button>
+            <div id="api-test-result" class="api-test-result hidden"></div>
+          </section>
+          <section class="settings-section">
+            <h2>プロジェクト設定</h2>
+            <div class="form-group">
+              <label>プロジェクト名</label>
+              <input type="text" id="project-name-input" placeholder="作品タイトル">
+            </div>
+            <div class="form-group">
+              <label>データ管理</label>
+              <div class="btn-group">
+                <button id="export-project-btn" class="btn-secondary">プロジェクトをJSON出力</button>
+                <button id="import-project-btn" class="btn-secondary">プロジェクトをインポート</button>
+                <input type="file" id="import-file-input" accept=".json" class="hidden">
+              </div>
+            </div>
+            <div class="form-group danger-zone">
+              <label>危険な操作</label>
+              <button id="clear-data-btn" class="btn-danger">全データを削除</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- Templates Page -->
+    <div id="page-templates" class="page">
+      <div class="templates-container">
+        <h1 class="page-title">プロンプトテンプレート編集</h1>
+        <div class="template-layout">
+          <div class="template-list-panel">
+            <div id="template-list" class="template-list"></div>
+          </div>
+          <div class="template-editor-panel">
+            <div class="template-editor-header">
+              <span id="template-edit-name">テンプレートを選択</span>
+              <button id="reset-template-btn" class="btn-secondary btn-sm">デフォルトに戻す</button>
+            </div>
+            <textarea id="template-editor" placeholder="テンプレートを選択してください"></textarea>
+            <div class="template-vars-hint">
+              使用可能な変数: <code>{total_chars}</code> <code>{genre}</code> <code>{theme}</code> <code>{nouns}</code> <code>{style_sample}</code>
+            </div>
+            <button id="save-template-btn" class="btn-primary">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Page -->
+    <div id="page-export" class="page">
+      <div class="export-container">
+        <h1 class="page-title">エクスポート</h1>
+        <div class="export-grid">
+          <div class="export-card" id="export-manuscript">
+            <div class="export-icon">📄</div>
+            <h3>本文（Markdown）</h3>
+            <p>全章の本文をMarkdown形式で出力</p>
+            <button class="btn-primary" data-export="manuscript">ダウンロード</button>
+          </div>
+          <div class="export-card" id="export-plot">
+            <div class="export-icon">🗺</div>
+            <h3>プロット資料</h3>
+            <p>コンセプト・プロット・章構成をまとめて出力</p>
+            <button class="btn-primary" data-export="plot">ダウンロード</button>
+          </div>
+          <div class="export-card" id="export-characters">
+            <div class="export-icon">👤</div>
+            <h3>キャラクターシート</h3>
+            <p>全キャラクターの設計情報を出力</p>
+            <button class="btn-primary" data-export="characters">ダウンロード</button>
+          </div>
+          <div class="export-card" id="export-visual-prompts">
+            <div class="export-icon">🎨</div>
+            <h3>ビジュアルプロンプト</h3>
+            <p>SD/NAI/MJ向け画像生成プロンプトを出力</p>
+            <button class="btn-primary" data-export="visual">ダウンロード</button>
+          </div>
+          <div class="export-card" id="export-all">
+            <div class="export-icon">📦</div>
+            <h3>全データ出力</h3>
+            <p>プロジェクト全体をJSONで出力</p>
+            <button class="btn-primary" data-export="all">ダウンロード</button>
+          </div>
+          <div class="export-card" id="export-nouns">
+            <div class="export-icon">📚</div>
+            <h3>固有名詞リスト</h3>
+            <p>登録された固有名詞一覧をMarkdown出力</p>
+            <button class="btn-primary" data-export="nouns">ダウンロード</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help Page -->
+    <div id="page-help" class="page">
+      <div class="help-container">
+        <h1 class="page-title">ヘルプ・技術情報</h1>
+        <div class="help-toc">
+          <a href="#help-usage">操作説明</a>
+          <a href="#help-tech">使用技術</a>
+          <a href="#help-storage">データ保存</a>
+          <a href="#help-errors">APIエラーコード</a>
+        </div>
+        <section id="help-usage" class="help-section">
+          <h2>操作説明</h2>
+          <div class="help-steps">
+            <div class="help-step"><span class="step-num">1</span><div><strong>設定ページ</strong>でAPIキーとモデルを設定する。APIキーはAnthropicコンソール（console.anthropic.com）から取得。</div></div>
+            <div class="help-step"><span class="step-num">2</span><div><strong>プロジェクト設定（INIT）</strong>で総字数・ジャンル・テーマを入力する。この値が全工程のプロンプトに自動反映される。</div></div>
+            <div class="help-step"><span class="step-num">3</span><div><strong>各工程</strong>は「AIに生成させる」ボタンでAPI呼び出し。生成後、テキストエリアで自由に編集できる。</div></div>
+            <div class="help-step"><span class="step-num">4</span><div><strong>固有名詞リスト</strong>はサイドバーから随時追加。全工程のプロンプトに自動挿入され表記ゆれを防ぐ。</div></div>
+            <div class="help-step"><span class="step-num">5</span><div><strong>工程01コンセプト</strong>では10案生成→独自性スコア降順表示→選択・編集→「決定稿に設定」で次工程へ進める。</div></div>
+            <div class="help-step"><span class="step-num">6</span><div><strong>工程05下書き</strong>は章ごとに個別生成。章要約が自動生成されトークン上限対策として後続プロンプトに使用される。</div></div>
+            <div class="help-step"><span class="step-num">7</span><div><strong>エクスポートページ</strong>から本文・キャラシート・ビジュアルプロンプト等を個別ファイルとして保存できる。</div></div>
+          </div>
+        </section>
+        <section id="help-tech" class="help-section">
+          <h2>使用技術</h2>
+          <table class="help-table">
+            <tr><th>技術</th><th>用途</th><th>バージョン</th></tr>
+            <tr><td>HTML5 / CSS3 / Vanilla JS</td><td>フロントエンド全般</td><td>ES2022+</td></tr>
+            <tr><td>IndexedDB (idb-keyval方式)</td><td>ローカルデータ永続化</td><td>ブラウザネイティブ</td></tr>
+            <tr><td>Anthropic Messages API</td><td>テキスト生成</td><td>v1/messages</td></tr>
+            <tr><td>Google Fonts</td><td>Noto Serif JP / IBM Plex Mono</td><td>—</td></tr>
+            <tr><td>Web Streams API</td><td>ストリーミングレスポンス（予備）</td><td>—</td></tr>
+          </table>
+        </section>
+        <section id="help-storage" class="help-section">
+          <h2>データ保存場所</h2>
+          <div class="storage-info">
+            <div class="storage-item">
+              <strong>IndexedDB</strong>
+              <p>ブラウザの開発者ツール → Application → IndexedDB → <code>TuringScriptDB</code></p>
+              <p>保存されるデータ：プロジェクト全工程の成果物、固有名詞リスト、カスタムテンプレート</p>
+            </div>
+            <div class="storage-item">
+              <strong>localStorage</strong>
+              <p>APIキー（暗号化なし・ローカル保存のみ）、モデル設定、UI状態</p>
+              <p>⚠ APIキーはブラウザのローカルストレージに平文保存されます。共有PCでの使用に注意。</p>
+            </div>
+            <div class="storage-item">
+              <strong>サーバー送信データ</strong>
+              <p>Anthropic APIへの送信：各工程の入力テキストとプロンプト。個人情報は含めないよう注意。</p>
+            </div>
+          </div>
+        </section>
+        <section id="help-errors" class="help-section">
+          <h2>APIエラーコード解説</h2>
+          <table class="help-table error-table">
+            <tr><th>コード</th><th>意味</th><th>対処法</th></tr>
+            <tr><td><code>401</code></td><td>認証エラー</td><td>APIキーを確認。設定ページで再入力してください。</td></tr>
+            <tr><td><code>403</code></td><td>権限エラー</td><td>APIキーにアクセス権限がありません。Anthropicコンソールを確認。</td></tr>
+            <tr><td><code>429</code></td><td>レート制限</td><td>リクエスト過多。数分待ってから再試行してください。</td></tr>
+            <tr><td><code>500</code></td><td>サーバーエラー</td><td>Anthropic側の障害。時間をおいて再試行。</td></tr>
+            <tr><td><code>529</code></td><td>過負荷</td><td>APIが高負荷状態。数分待って再試行。</td></tr>
+            <tr><td><code>overloaded_error</code></td><td>モデル過負荷</td><td>モデルを変更するか、時間をおいて再試行。</td></tr>
+            <tr><td><code>context_length_exceeded</code></td><td>トークン上限超過</td><td>章要約モードを使用するか、テキストを分割して送信。</td></tr>
+            <tr><td><code>invalid_request_error</code></td><td>リクエスト形式エラー</td><td>テンプレートの構文を確認。特殊文字に注意。</td></tr>
+          </table>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div id="modal" class="modal">
+    <div class="modal-header">
+      <span id="modal-title">確認</span>
+      <button id="modal-close" class="btn-icon">✕</button>
+    </div>
+    <div id="modal-body" class="modal-body"></div>
+    <div class="modal-footer">
+      <button id="modal-cancel" class="btn-secondary">キャンセル</button>
+      <button id="modal-confirm" class="btn-primary">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script src="db.js"></script>
+<script src="api.js"></script>
+<script src="templates.js"></script>
+<script src="stages.js"></script>
+<script src="export.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
