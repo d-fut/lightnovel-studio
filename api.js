@@ -12,15 +12,15 @@ const ErrorMessages = {
 
 class AnthropicClient {
   constructor() {
-    this.apiKey = localStorage.getItem('ts_api_key') || '';
-    this.model = localStorage.getItem('ts_model') || 'claude-sonnet-4-20250514';
-    this.maxTokens = parseInt(localStorage.getItem('ts_max_tokens') || '4000');
+    this.apiKey = localStorage.getItem('lns_api_key') || '';
+    this.model = localStorage.getItem('lns_model') || 'claude-sonnet-4-20250514';
+    this.maxTokens = parseInt(localStorage.getItem('lns_max_tokens') || '4000');
   }
 
   updateConfig() {
-    this.apiKey = localStorage.getItem('ts_api_key') || '';
-    this.model = localStorage.getItem('ts_model') || 'claude-sonnet-4-20250514';
-    this.maxTokens = parseInt(localStorage.getItem('ts_max_tokens') || '4000');
+    this.apiKey = localStorage.getItem('lns_api_key') || '';
+    this.model = localStorage.getItem('lns_model') || 'claude-sonnet-4-20250514';
+    this.maxTokens = parseInt(localStorage.getItem('lns_max_tokens') || '4000');
   }
 
   async call(systemPrompt, userPrompt, { maxTokens } = {}) {

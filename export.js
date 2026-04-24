@@ -51,8 +51,8 @@ const Exporter = {
     const name = state.meta.name || '無題';
     const v = state.stages.visual || {};
     let md = `# ${name} — ビジュアル生成プロンプト\n\n`;
-    md += `## キャラクタービジュアル\n\`\`\`\n${JSON.stringify(v.character, null, 2) || '未生成'}\n\`\`\`\n\n`;
-    md += `## クライマックスシーン\n\`\`\`\n${JSON.stringify(v.scene, null, 2) || '未生成'}\n\`\`\`\n`;
+    md += `## キャラクタービジュアル\n\n${v.character?.raw || '未生成'}\n\n`;
+    md += `## クライマックスシーン\n\n${v.scene?.raw || '未生成'}\n`;
     this._download(`${name}_ビジュアルプロンプト.md`, md);
   },
 

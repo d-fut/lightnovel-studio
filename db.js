@@ -1,5 +1,5 @@
 // ===== IndexedDB Layer =====
-const DB_NAME = 'TuringScriptDB';
+const DB_NAME = 'lightnovel-studio-db';
 const DB_VERSION = 1;
 const STORE = 'project';
 

@@ -155,8 +155,36 @@ const StageRenderers = {
       const tmpl = await TemplateManager.get('concept');
       const userPrompt = buildPrompt(tmpl.user, { total_chars: totalChars, genre, theme });
       const raw = await apiClient.call(tmpl.system, userPrompt);
-      const parsed = safeParseJSON(raw);
-      if (!Array.isArray(parsed)) { showToast('JSONパースに失敗しました。再試行してください', 'error'); return; }
+
+      // MarkdownからコンセプトオブジェクトをパースしてJSON配列に変換
+      const blocks = raw.split(/(?=###\s*案\d+)/);
+      const parsed = blocks
+        .filter(b => /###\s*案\d+/.test(b))
+        .map(block => {
+          const scoreMatch = block.match(/スコア[：:]\s*(\d+)\s*\/\s*10/);
+          const catchcopyMatch = block.match(/\*\*キャッチコピー[：:]\*\*\s*([^\n]+)/);
+          const ruleMatch = block.match(/\*\*世界の核心ルール[：:]\*\*\s*([\s\S]*?)(?=\*\*主人公|$)/);
+          const questionMatch = block.match(/\*\*主人公が直面する問い[：:]\*\*\s*([^\n]+)/);
+          const diffMatch = block.match(/\*\*差別化ポイント[：:]\*\*\s*([^\n]+)/);
+          const reasonMatch = block.match(/\*\*スコア根拠[：:]\*\*\s*([^\n]+)/);
+          return {
+            catchcopy: catchcopyMatch ? catchcopyMatch[1].trim() : '（解析失敗）',
+            core_rule: ruleMatch ? ruleMatch[1].trim() : '',
+            protagonist_question: questionMatch ? questionMatch[1].trim() : '',
+            differentiation: diffMatch ? diffMatch[1].trim() : '',
+            originality_score: scoreMatch ? parseInt(scoreMatch[1]) : 5,
+            score_reason: reasonMatch ? reasonMatch[1].trim() : '',
+          };
+        })
+        .filter(c => c.catchcopy !== '（解析失敗）' || c.originality_score);
+
+      if (parsed.length === 0) {
+        // パース失敗時はrawテキストをそのまま表示して手動選択できるようにする
+        const resultsEl = document.getElementById('concept-results');
+        resultsEl.innerHTML = `<div class="result-box"><div class="result-label">生成結果（自動解析失敗・以下から手動でコピーして決定稿に貼り付けてください）</div><textarea class="large">${raw}</textarea></div>`;
+        showToast('Markdownの解析に失敗しました。手動でコピーしてください', 'info');
+        return;
+      }
 
       await ProjectState.set('stages.concept.concepts', parsed);
       await ProjectState.set('stages.concept.selectedIndex', null);
@@ -189,6 +217,13 @@ const StageRenderers = {
     const state = await ProjectState.load();
     const plotData = state.stages.plot;
     const totalChars = state.meta.totalChars || 10000;
+
+    // 字数配分: 第一幕20% / 第二幕60% / 第三幕20%（合計100%）
+    const ACT_RATIOS = { act1: 0.20, act2: 0.60, act3: 0.20 };
+    const act1Chars = Math.round(totalChars * ACT_RATIOS.act1);
+    const act2Chars = Math.round(totalChars * ACT_RATIOS.act2);
+    // 第三幕は端数吸収で合計を保証
+    const act3Chars = totalChars - act1Chars - act2Chars;
     const climaxPos = Math.round(totalChars * 0.75);
 
     container.innerHTML = `
@@ -196,7 +231,7 @@ const StageRenderers = {
         <span class="stage-badge">02</span>
         <div>
           <div class="stage-title">プロット構築</div>
-          <div class="stage-desc">三幕構成でプロットを設計。クライマックスは${climaxPos.toLocaleString()}字地点（75%）</div>
+          <div class="stage-desc">三幕構成。合計字数＝総字数 ${totalChars.toLocaleString()}字（第一幕${ACT_RATIOS.act1*100}%／第二幕${ACT_RATIOS.act2*100}%／第三幕${ACT_RATIOS.act3*100}%）</div>
         </div>
       </div>
       <div class="ai-action-bar">
@@ -205,17 +240,23 @@ const StageRenderers = {
       </div>
       <div class="three-act-grid" id="plot-grid">
         <div class="act-panel">
-          <span class="act-label">第一幕（序）</span>
+          <span class="act-label" id="act1-label"></span>
           <textarea id="plot-act1" placeholder="日常・欠如・事件・伏線">${plotData.acts?.act1||''}</textarea>
         </div>
         <div class="act-panel">
-          <span class="act-label">第二幕（破）</span>
+          <span class="act-label" id="act2-label"></span>
           <textarea id="plot-act2" class="large" placeholder="選択と代償・中間点・最大の危機">${plotData.acts?.act2||''}</textarea>
         </div>
         <div class="act-panel">
-          <span class="act-label">第三幕（急）</span>
+          <span class="act-label" id="act3-label"></span>
           <textarea id="plot-act3" placeholder="クライマックス・結末・余韻">${plotData.acts?.act3||''}</textarea>
         </div>
+      </div>
+      <div class="result-box" style="margin-top:4px;padding:8px 14px">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">
+          字数配分確認：第一幕 ${act1Chars.toLocaleString()} ＋ 第二幕 ${act2Chars.toLocaleString()} ＋ 第三幕 ${act3Chars.toLocaleString()} ＝ <strong style="color:var(--accent)">${(act1Chars+act2Chars+act3Chars).toLocaleString()}字</strong>
+          ／クライマックス位置：${climaxPos.toLocaleString()}字地点（75%）
+        </span>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn-success" id="plot-confirm-btn">プロット確定→工程03へ →</button>
@@ -223,7 +264,12 @@ const StageRenderers = {
       </div>
     `;
 
-    document.getElementById('plot-gen-btn').onclick = () => this._runPlotGen(climaxPos);
+    // innerHTML でラベルをセット（strongタグを正しく描画）
+    document.getElementById('act1-label').innerHTML = `第一幕（序）｜<strong>${act1Chars.toLocaleString()}字</strong>（${ACT_RATIOS.act1*100}%）`;
+    document.getElementById('act2-label').innerHTML = `第二幕（破）｜<strong>${act2Chars.toLocaleString()}字</strong>（${ACT_RATIOS.act2*100}%）`;
+    document.getElementById('act3-label').innerHTML = `第三幕（急）｜<strong>${act3Chars.toLocaleString()}字</strong>（${ACT_RATIOS.act3*100}%）`;
+
+    document.getElementById('plot-gen-btn').onclick = () => this._runPlotGen(act1Chars, act2Chars, act3Chars, climaxPos);
     document.getElementById('plot-save-btn').onclick = () => this._savePlot();
     document.getElementById('plot-confirm-btn').onclick = async () => {
       await this._savePlot();
@@ -242,7 +288,7 @@ const StageRenderers = {
     showToast('保存しました', 'success');
   },
 
-  async _runPlotGen(climaxPos) {
+  async _runPlotGen(act1Chars, act2Chars, act3Chars, climaxPos) {
     const btn = document.getElementById('plot-gen-btn');
     btn.disabled = true; btn.classList.add('loading');
     try {
@@ -253,15 +299,31 @@ const StageRenderers = {
       const nouns = state.nouns.map(n => n.text).join('、') || 'なし';
 
       const tmpl = await TemplateManager.get('plot');
-      const userPrompt = buildPrompt(tmpl.user, { total_chars: totalChars, genre, theme, concept, nouns, climax_pos: climaxPos });
+      const userPrompt = buildPrompt(tmpl.user, {
+        total_chars: totalChars,
+        genre, theme, concept, nouns,
+        climax_pos: climaxPos,
+        act1_chars: act1Chars,
+        act2_chars: act2Chars,
+        act3_chars: act3Chars,
+        act1_pct: 20,
+        act2_pct: 60,
+        act3_pct: 20,
+      });
       const raw = await apiClient.call(tmpl.system, userPrompt);
-      const parsed = safeParseJSON(raw);
-      if (parsed) {
-        document.getElementById('plot-act1').value = JSON.stringify(parsed.act1, null, 2);
-        document.getElementById('plot-act2').value = JSON.stringify(parsed.act2, null, 2);
-        document.getElementById('plot-act3').value = JSON.stringify(parsed.act3, null, 2);
-        showToast('プロット生成完了', 'success');
+
+      // Markdown出力を幕ごとに分割してテキストエリアへ
+      const act1Match = raw.match(/###\s*第一幕[^\n]*\n([\s\S]*?)(?=###\s*第二幕|$)/);
+      const act2Match = raw.match(/###\s*第二幕[^\n]*\n([\s\S]*?)(?=###\s*第三幕|$)/);
+      const act3Match = raw.match(/###\s*第三幕[^\n]*\n([\s\S]*?)$/);
+
+      if (act1Match || act2Match || act3Match) {
+        if (act1Match) document.getElementById('plot-act1').value = act1Match[1].trim();
+        if (act2Match) document.getElementById('plot-act2').value = act2Match[1].trim();
+        if (act3Match) document.getElementById('plot-act3').value = act3Match[1].trim();
+        showToast('プロット生成完了（各幕に自動分割）', 'success');
       } else {
+        // フォールバック: 生のMarkdownをそのまま第一幕エリアへ
         document.getElementById('plot-act1').value = raw;
         showToast('生成完了（手動で各幕に分配してください）', 'info');
       }
@@ -319,12 +381,11 @@ const StageRenderers = {
       const raw = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, { plot, theme: state.meta.theme, nouns }));
       await ProjectState.set('stages.characters.raw', raw);
 
-      // Try to extract names and add to nouns
-      const parsed = safeParseJSON(raw);
-      if (parsed?.characters) {
-        for (const c of parsed.characters) {
-          if (c.name) await addNoun(c.name);
-        }
+      // Markdownの ## キャラクター名（...）形式から名前を抽出
+      const nameMatches = raw.matchAll(/^##\s+([^\n（(【]+)/gm);
+      for (const m of nameMatches) {
+        const name = m[1].trim();
+        if (name && name !== 'アンサンブル評価') await addNoun(name);
       }
 
       document.getElementById('char-results').innerHTML = `<textarea class="large" id="char-raw-edit">${raw}</textarea>`;
@@ -368,12 +429,45 @@ const StageRenderers = {
       if (el) {
         const raw = el.value;
         await ProjectState.set('stages.chapters.raw', raw);
-        const parsed = safeParseJSON(raw);
-        if (Array.isArray(parsed)) await ProjectState.set('stages.chapters.list', parsed);
+
+        // MarkdownからchapterオブジェクトのListを生成
+        // 書式: ### 第N章「タイトル」｜目安X字
+        const chapBlocks = raw.split(/(?=###\s*第\d+章)/);
+        const list = chapBlocks
+          .filter(b => /###\s*第\d+章/.test(b))
+          .map(block => {
+            const titleMatch = block.match(/###\s*第(\d+)章[「『]?([^」』｜|\n]*)[」』]?[｜|]?(?:目安)?(\d+)?字?/);
+            const povMatch = block.match(/\*\*視点人物[：:]\*\*\s*([^\n]+)/);
+            const eventsMatch = block.match(/\*\*主な出来事[：:]\*\*\s*([^\n]+)/);
+            const openingMatch = block.match(/\*\*冒頭の引き[：:]\*\*\s*([^\n]+)/);
+            const endingMatch = block.match(/\*\*末尾フック[：:]\*\*\s*([^\n]+)/);
+            const hookTypeMatch = block.match(/【(疑問|誤解|選択)】/);
+            return {
+              chapter_num: titleMatch ? parseInt(titleMatch[1]) : 0,
+              title: titleMatch ? titleMatch[2].trim() : '',
+              pov: povMatch ? povMatch[1].trim() : '',
+              events: eventsMatch ? eventsMatch[1].trim() : '',
+              opening_hook: openingMatch ? openingMatch[1].trim() : '',
+              ending_hook: endingMatch ? endingMatch[1].trim() : '',
+              hook_type: hookTypeMatch ? hookTypeMatch[1] : '',
+              target_chars: titleMatch?.[3] ? parseInt(titleMatch[3]) : 2500,
+            };
+          })
+          .filter(c => c.chapter_num > 0);
+
+        if (list.length > 0) {
+          await ProjectState.set('stages.chapters.list', list);
+          showToast(`${list.length}章を解析してリスト化しました`, 'success');
+        } else {
+          // パース失敗時は章タブなしで工程05へ進めるよう最低限のリストを生成
+          const fallback = [{ chapter_num: 1, title: '（タイトル未解析）', pov: '', events: '', opening_hook: '', ending_hook: '', hook_type: '', target_chars: 2500 }];
+          await ProjectState.set('stages.chapters.list', fallback);
+          showToast('章の自動解析に失敗しました。工程05で手動確認してください', 'info');
+        }
       }
       await ProjectState.set('stageStatus.4', 'done');
       updateStageStatus(4, 'done'); unlockStage(5);
-      showToast('章構成確定', 'success'); navigateStage(5);
+      navigateStage(5);
     };
   },
 
@@ -428,14 +522,21 @@ const StageRenderers = {
       <div class="result-box" style="margin-bottom:8px">
         <div class="result-label">現在の章：第${chap.chapter_num || (currentChap+1)}章「${chap.title || ''}」</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
-          視点：${chap.pov||'—'} ／ 目安：${chap.target_chars||'—'}字 ／ フック：${chap.hook_type||'—'}
+          視点：${chap.pov||'—'} ／ 目安：${chap.target_chars ? chap.target_chars.toLocaleString() : '—'}字 ／ フック種別：${chap.hook_type||'—'}
         </div>
+        ${chap.ending_hook ? `<div style="font-size:12px;color:var(--accent2);margin-top:2px">末尾フック：${chap.ending_hook}</div>` : ''}
       </div>
       <div class="ai-action-bar">
         <div class="ai-hint">この章の下書きを生成します</div>
         <button class="btn-ai" id="draft-gen-btn"><div class="spinner"></div>✦ AI下書き生成</button>
       </div>
       <textarea id="draft-text" class="draft" placeholder="本文がここに生成されます">${draft.draft||''}</textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:4px">
+        <span id="draft-char-count" style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">
+          ${(draft.draft||'').length.toLocaleString()}字
+          ${chap.target_chars ? ` / 目安 ${chap.target_chars.toLocaleString()}字` : ''}
+        </span>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         <button class="btn-secondary" id="summary-gen-btn">✦ 要約を自動生成</button>
         <button class="btn-secondary" id="draft-save-btn">保存</button>
@@ -446,6 +547,18 @@ const StageRenderers = {
 
     document.getElementById('draft-gen-btn').onclick = () => this._runDraftGen(currentChap, chap);
     document.getElementById('summary-gen-btn').onclick = () => this._runSummaryGen(currentChap);
+
+    // リアルタイム文字数カウント
+    const draftEl = document.getElementById('draft-text');
+    const countEl = document.getElementById('draft-char-count');
+    draftEl.addEventListener('input', () => {
+      const len = draftEl.value.length;
+      const target = chap.target_chars;
+      const pct = target ? Math.round(len / target * 100) : null;
+      const color = pct == null ? 'var(--text-muted)' : pct >= 90 && pct <= 115 ? 'var(--success)' : pct > 115 ? 'var(--warning)' : 'var(--text-muted)';
+      countEl.style.color = color;
+      countEl.textContent = `${len.toLocaleString()}字${target ? ` / 目安 ${target.toLocaleString()}字（${pct}%）` : ''}`;
+    });
     document.getElementById('draft-save-btn').onclick = async () => {
       const txt = document.getElementById('draft-text').value;
       const cur = (await ProjectState.get('stages.drafts')) || {};
@@ -486,7 +599,16 @@ const StageRenderers = {
         .map(([k, v]) => `第${parseInt(k)+1}章：${v.summary}`)
         .join('\n') || 'なし（最初の章）';
 
-      const chapSpec = JSON.stringify(chap, null, 2);
+      // chapter_spec をMarkdown形式で組み立て
+      const chapSpec = [
+        `- 章番号：第${chap.chapter_num || (chapIdx+1)}章`,
+        `- タイトル：${chap.title || '（未設定）'}`,
+        `- 視点人物：${chap.pov || '（未設定）'}`,
+        `- 主な出来事：${chap.events || '（未設定）'}`,
+        `- 冒頭の引き：${chap.opening_hook || '（未設定）'}`,
+        `- 末尾フック：${chap.ending_hook || '（未設定）'}【${chap.hook_type || '—'}】`,
+        `- 目安字数：${chap.target_chars || 2500}字`,
+      ].join('\n');
       const tmpl = await TemplateManager.get('draft');
       const userPrompt = buildPrompt(tmpl.user, {
         chapter_spec: chapSpec,
@@ -573,23 +695,8 @@ const StageRenderers = {
   },
 
   _renderConsistencyTable(raw) {
-    const parsed = safeParseJSON(raw);
-    if (!parsed) return `<textarea class="large">${raw}</textarea>`;
-    const issues = parsed.issues || [];
-    const clean = parsed.clean_items || [];
-    return `
-      ${issues.length === 0 ? '<p style="color:var(--success)">✓ 矛盾は検出されませんでした</p>' : `
-      <table class="check-result-table">
-        <tr><th>種別</th><th>箇所</th><th>内容</th><th>修正案</th></tr>
-        ${issues.map(i => `<tr>
-          <td><span class="issue-type">${i.type}</span></td>
-          <td style="font-size:11px">${i.location}</td>
-          <td>${i.description}</td>
-          <td style="color:var(--accent2);font-size:12px">${i.suggestion}</td>
-        </tr>`).join('')}
-      </table>`}
-      ${clean.length ? `<div style="margin-top:12px;font-size:12px;color:var(--text-muted)">問題なし：${clean.join('、')}</div>` : ''}
-    `;
+    // Markdown形式で直接表示
+    return `<div class="result-box"><div class="result-label">チェック結果</div><div class="md-display" style="font-size:13px;line-height:1.8;white-space:pre-wrap;font-family:var(--sans)">${raw.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>`;
   },
 
   async _runConsCheck() {
@@ -614,6 +721,17 @@ const StageRenderers = {
   async render7(container) {
     const state = await ProjectState.load();
     const revData = state.stages.revision;
+    const chapters = state.stages.chapters.list || [];
+    const drafts = state.stages.drafts || {};
+
+    // 下書きが存在する章のセレクタを構築
+    const draftOptions = chapters
+      .filter((_, i) => drafts[i]?.draft)
+      .map((c, _, arr) => {
+        const i = chapters.indexOf(c);
+        return `<option value="${i}">第${c.chapter_num || (i+1)}章「${c.title || ''}」</option>`;
+      }).join('');
+
     container.innerHTML = `
       <div class="stage-header">
         <span class="stage-badge">07</span>
@@ -622,8 +740,20 @@ const StageRenderers = {
           <div class="stage-desc">スタイルガイドに基づきリライト。章ごとに実施推奨。</div>
         </div>
       </div>
+      ${draftOptions ? `
       <div class="input-group">
-        <label>対象テキスト（章を貼り付け）</label>
+        <label>下書きから読み込む</label>
+        <div style="display:flex;gap:8px">
+          <select id="rev-chap-select" style="flex:1">
+            <option value="">— 章を選択 —</option>
+            ${draftOptions}
+          </select>
+          <button class="btn-secondary" id="rev-load-btn">読み込む</button>
+        </div>
+      </div>
+      ` : ''}
+      <div class="input-group">
+        <label>対象テキスト（章を貼り付けまたは上で読み込み）</label>
         <textarea id="rev-input" class="large" placeholder="改稿する章本文をここに貼り付けてください"></textarea>
       </div>
       <div class="input-group">
@@ -644,6 +774,16 @@ const StageRenderers = {
       </div>
     `;
 
+    if (draftOptions) {
+      document.getElementById('rev-load-btn').onclick = () => {
+        const sel = document.getElementById('rev-chap-select');
+        const idx = sel.value;
+        if (idx === '') return;
+        const draft = drafts[parseInt(idx)]?.draft || '';
+        document.getElementById('rev-input').value = draft;
+        showToast('下書きを読み込みました', 'info');
+      };
+    }
     document.getElementById('rev-gen-btn').onclick = () => this._runRevision();
     document.getElementById('rev-save-btn').onclick = async () => {
       await ProjectState.set('stages.revision.raw', document.getElementById('rev-output').value);
@@ -674,6 +814,16 @@ const StageRenderers = {
   // ===== STAGE 8: POLISH =====
   async render8(container) {
     const state = await ProjectState.load();
+    const chapters = state.stages.chapters.list || [];
+    const drafts = state.stages.drafts || {};
+
+    const draftOptions = chapters
+      .filter((_, i) => drafts[i]?.draft)
+      .map(c => {
+        const i = chapters.indexOf(c);
+        return `<option value="${i}">第${c.chapter_num || (i+1)}章「${c.title || ''}」</option>`;
+      }).join('');
+
     container.innerHTML = `
       <div class="stage-header">
         <span class="stage-badge">08</span>
@@ -682,6 +832,18 @@ const StageRenderers = {
           <div class="stage-desc">誤字・読点・語句重複・語尾一貫性の校正</div>
         </div>
       </div>
+      ${draftOptions ? `
+      <div class="input-group">
+        <label>下書きから読み込む</label>
+        <div style="display:flex;gap:8px">
+          <select id="polish-chap-select" style="flex:1">
+            <option value="">— 章を選択 —</option>
+            ${draftOptions}
+          </select>
+          <button class="btn-secondary" id="polish-load-btn">読み込む</button>
+        </div>
+      </div>
+      ` : ''}
       <div class="input-group">
         <label>対象テキスト</label>
         <textarea id="polish-input" class="large" placeholder="校正する本文を貼り付けてください"></textarea>
@@ -700,6 +862,16 @@ const StageRenderers = {
       </div>
     `;
 
+    if (draftOptions) {
+      document.getElementById('polish-load-btn').onclick = () => {
+        const sel = document.getElementById('polish-chap-select');
+        const idx = sel.value;
+        if (idx === '') return;
+        const draft = drafts[parseInt(idx)]?.draft || '';
+        document.getElementById('polish-input').value = draft;
+        showToast('下書きを読み込みました', 'info');
+      };
+    }
     document.getElementById('polish-gen-btn').onclick = () => this._runPolish();
     document.getElementById('polish-save-btn').onclick = async () => {
       await ProjectState.set('stages.polish.raw', document.getElementById('polish-output').value);
@@ -733,8 +905,6 @@ const StageRenderers = {
   async render9(container) {
     const state = await ProjectState.load();
     const visual = state.stages.visual || {};
-    let selectedCharStyle = 'アニメ調';
-    let selectedSceneStyle = 'ライトノベル表紙';
 
     container.innerHTML = `
       <div class="stage-header">
@@ -749,7 +919,7 @@ const StageRenderers = {
           <h3>🧍 キャラクタービジュアル</h3>
           <div class="input-group">
             <label>キャラクター情報</label>
-            <textarea id="vis-char-input" placeholder="キャラクター設計から貼り付けまたは入力">${state.stages.characters.raw?.slice(0,500)||''}</textarea>
+            <textarea id="vis-char-input" placeholder="キャラクター設計から貼り付けまたは入力">${(state.stages.characters.raw||'').slice(0,600)}</textarea>
           </div>
           <div class="input-group"><label>画風</label></div>
           <div class="style-selector" id="char-style-selector">
@@ -759,14 +929,14 @@ const StageRenderers = {
             <div class="ai-hint"></div>
             <button class="btn-ai" id="vis-char-btn"><div class="spinner"></div>✦ 生成</button>
           </div>
-          <div class="prompt-output" id="vis-char-output">${visual.character?.sd_format||'ここに生成されます'}</div>
+          <div class="prompt-output" id="vis-char-output">${visual.character?.raw || 'ここに生成されます'}</div>
           <div class="copy-btn-row"><button class="btn-secondary btn-sm" onclick="StageRenderers._copyPrompt('vis-char-output')">📋 コピー</button></div>
         </div>
         <div class="visual-card">
           <h3>🎬 クライマックスシーン挿絵</h3>
           <div class="input-group">
             <label>クライマックス内容</label>
-            <textarea id="vis-scene-input" placeholder="プロット第三幕のクライマックスを貼り付け">${state.stages.plot.acts?.act3?.slice(0,500)||''}</textarea>
+            <textarea id="vis-scene-input" placeholder="プロット第三幕のクライマックスを貼り付け">${(state.stages.plot.acts?.act3||'').slice(0,600)}</textarea>
           </div>
           <div class="input-group"><label>画風</label></div>
           <div class="style-selector" id="scene-style-selector">
@@ -776,7 +946,7 @@ const StageRenderers = {
             <div class="ai-hint"></div>
             <button class="btn-ai" id="vis-scene-btn"><div class="spinner"></div>✦ 生成</button>
           </div>
-          <div class="prompt-output" id="vis-scene-output">${visual.scene?.sd_format||'ここに生成されます'}</div>
+          <div class="prompt-output" id="vis-scene-output">${visual.scene?.raw || 'ここに生成されます'}</div>
           <div class="copy-btn-row"><button class="btn-secondary btn-sm" onclick="StageRenderers._copyPrompt('vis-scene-output')">📋 コピー</button></div>
         </div>
       </div>
@@ -805,10 +975,8 @@ const StageRenderers = {
       const style = this._charStyle;
       const tmpl = await TemplateManager.get('visual_character');
       const raw = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, { character, style }));
-      const parsed = safeParseJSON(raw);
-      const output = parsed ? `[SD]\n${parsed.sd_format}\n\n[NAI]\n${parsed.nai_format}\n\n[MJ]\n${parsed.mj_format}\n\n[Negative]\n${parsed.negative}` : raw;
-      document.getElementById('vis-char-output').textContent = output;
-      await ProjectState.set('stages.visual.character', parsed || { sd_format: raw });
+      document.getElementById('vis-char-output').textContent = raw;
+      await ProjectState.set('stages.visual.character', { raw });
       showToast('キャラビジュアルプロンプト生成完了', 'success');
     } catch (e) { showToast(e.message, 'error'); }
     finally { btn.disabled = false; btn.classList.remove('loading'); }
@@ -824,10 +992,8 @@ const StageRenderers = {
       const style = this._sceneStyle;
       const tmpl = await TemplateManager.get('visual_scene');
       const raw = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, { climax, characters, style }));
-      const parsed = safeParseJSON(raw);
-      const output = parsed ? `[Scene]\n${parsed.scene_description}\n\n[SD]\n${parsed.sd_format}\n\n[NAI]\n${parsed.nai_format}\n\n[MJ]\n${parsed.mj_format}\n\n[Negative]\n${parsed.negative}` : raw;
-      document.getElementById('vis-scene-output').textContent = output;
-      await ProjectState.set('stages.visual.scene', parsed || { sd_format: raw });
+      document.getElementById('vis-scene-output').textContent = raw;
+      await ProjectState.set('stages.visual.scene', { raw });
       showToast('シーンプロンプト生成完了', 'success');
     } catch (e) { showToast(e.message, 'error'); }
     finally { btn.disabled = false; btn.classList.remove('loading'); }

@@ -93,6 +93,12 @@ function renderNounList(nouns) {
 }
 
 // ===== Settings =====
+const LS = {
+  get: k => localStorage.getItem('lns_' + k),
+  set: (k, v) => localStorage.setItem('lns_' + k, v),
+  remove: k => localStorage.removeItem('lns_' + k),
+};
+
 function initSettings() {
   const keyInput = document.getElementById('api-key-input');
   const modelSelect = document.getElementById('model-select');
@@ -100,9 +106,9 @@ function initSettings() {
   const projectNameInput = document.getElementById('project-name-input');
 
   // Load saved values
-  keyInput.value = localStorage.getItem('ts_api_key') || '';
-  modelSelect.value = localStorage.getItem('ts_model') || 'claude-sonnet-4-20250514';
-  tokensInput.value = localStorage.getItem('ts_max_tokens') || '4000';
+  keyInput.value = LS.get('api_key') || '';
+  modelSelect.value = LS.get('model') || 'claude-sonnet-4-20250514';
+  tokensInput.value = LS.get('max_tokens') || '4000';
   ProjectState.get('meta.name').then(n => { if (n) projectNameInput.value = n; });
 
   // Toggle key visibility
@@ -114,9 +120,9 @@ function initSettings() {
 
   // Save settings
   document.getElementById('save-settings-btn').onclick = async () => {
-    localStorage.setItem('ts_api_key', keyInput.value.trim());
-    localStorage.setItem('ts_model', modelSelect.value);
-    localStorage.setItem('ts_max_tokens', tokensInput.value);
+    LS.set('api_key', keyInput.value.trim());
+    LS.set('model', modelSelect.value);
+    LS.set('max_tokens', tokensInput.value);
     const name = projectNameInput.value.trim();
     if (name) {
       await ProjectState.set('meta.name', name);
@@ -134,8 +140,8 @@ function initSettings() {
     const resultEl = document.getElementById('api-test-result');
     resultEl.classList.remove('hidden', 'success', 'error');
     try {
-      localStorage.setItem('ts_api_key', keyInput.value.trim());
-      localStorage.setItem('ts_model', modelSelect.value);
+      LS.set('api_key', keyInput.value.trim());
+      LS.set('model', modelSelect.value);
       apiClient.updateConfig();
       const result = await apiClient.test();
       resultEl.textContent = `✓ 接続成功：${result}`;
@@ -170,9 +176,7 @@ function initSettings() {
   document.getElementById('clear-data-btn').onclick = () => {
     showModal('全データを削除', '<p>プロジェクトの全データを削除します。この操作は取り消せません。</p>', async () => {
       await dbClear();
-      localStorage.removeItem('ts_api_key');
-      localStorage.removeItem('ts_model');
-      localStorage.removeItem('ts_max_tokens');
+      LS.remove('api_key'); LS.remove('model'); LS.remove('max_tokens');
       showToast('全データを削除しました', 'info');
       setTimeout(() => location.reload(), 1000);
     });
@@ -180,7 +184,7 @@ function initSettings() {
 }
 
 function updateApiStatus() {
-  const key = localStorage.getItem('ts_api_key');
+  const key = LS.get('api_key');
   const dot = document.getElementById('nav-api-status');
   dot.className = 'status-dot ' + (key ? 'online' : 'offline');
 }
@@ -264,11 +268,25 @@ async function init() {
 
   // Noun add
   document.getElementById('add-noun-btn').onclick = () => {
-    showModal('固有名詞を追加', `<label style="font-size:12px;color:var(--text-muted)">固有名詞</label><input type="text" id="noun-input-modal" placeholder="例：霧島渡" style="width:100%;margin-top:6px">`, async () => {
-      const val = document.getElementById('noun-input-modal').value;
-      await addNoun(val);
-      showToast('追加しました', 'success');
-    });
+    showModal(
+      '固有名詞を追加',
+      `<label style="font-size:12px;color:var(--text-muted)">固有名詞（Enterで確定）</label>
+       <input type="text" id="noun-input-modal" placeholder="例：霧島渡" style="width:100%;margin-top:6px" autocomplete="off">`,
+      async () => {
+        const val = document.getElementById('noun-input-modal')?.value?.trim();
+        if (val) { await addNoun(val); showToast(`「${val}」を追加しました`, 'success'); }
+      }
+    );
+    // Enterキーで確定
+    setTimeout(() => {
+      const input = document.getElementById('noun-input-modal');
+      if (input) {
+        input.focus();
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { e.preventDefault(); document.getElementById('modal-confirm').click(); }
+        });
+      }
+    }, 50);
   };
 
   // Modal close
