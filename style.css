@@ -444,8 +444,8 @@ textarea.draft { min-height: 400px; font-family: var(--serif); font-size: 14px; 
 
 /* ===== PLOT / CHARACTER ===== */
 .three-act-grid {
-  display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 .act-panel {
@@ -454,6 +454,7 @@ textarea.draft { min-height: 400px; font-family: var(--serif); font-size: 14px; 
   border-radius: var(--radius-lg);
   padding: 16px;
 }
+.act-panel textarea { min-height: 160px; }
 .act-label {
   font-family: var(--mono);
   font-size: 10px;
@@ -484,7 +485,55 @@ textarea.draft { min-height: 400px; font-family: var(--serif); font-size: 14px; 
 .char-card-body { padding: 16px; display: none; }
 .char-card-body.open { display: block; }
 
-/* ===== CHAPTER TABS ===== */
+/* ===== ACT BREAKDOWN PANEL (stage 04) ===== */
+.act-breakdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 20px;
+  flex-wrap: wrap;
+}
+.act-breakdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 100px;
+}
+.act-breakdown-item.total {
+  border-left: 1px solid var(--border);
+  padding-left: 16px;
+  margin-left: 8px;
+}
+.act-breakdown-item.total .act-breakdown-chars { color: var(--accent); }
+.act-breakdown-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.act-breakdown-chars {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.act-breakdown-chaps {
+  font-size: 11px;
+  color: var(--accent2);
+}
+.act-breakdown-sep {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--border-light);
+  padding: 0 4px;
+}
+
+
 .chapter-tabs {
   display: flex; flex-wrap: wrap; gap: 6px;
   margin-bottom: 16px;
@@ -519,8 +568,8 @@ textarea.draft { min-height: 400px; font-family: var(--serif); font-size: 14px; 
 
 /* ===== VISUAL PROMPTS ===== */
 .visual-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
 }
 .visual-card {
@@ -620,6 +669,24 @@ textarea.draft { min-height: 400px; font-family: var(--serif); font-size: 14px; 
 }
 .api-key-input { display: flex; gap: 8px; }
 .api-key-input input { flex: 1; }
+.provider-toggle {
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+.provider-opt {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; cursor: pointer;
+  padding: 6px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: all 0.15s;
+}
+.provider-opt:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(200,169,110,0.1);
+  color: var(--accent);
+}
+.provider-opt input[type="radio"] { accent-color: var(--accent); }
 .danger-zone { padding-top: 12px; border-top: 1px solid var(--border); }
 .api-test-result {
   padding: 10px 14px;

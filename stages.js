@@ -17,10 +17,14 @@ const StageRenderers = {
         <span class="stage-badge">INIT</span>
         <div>
           <div class="stage-title">プロジェクト設定</div>
-          <div class="stage-desc">総字数とジャンルを設定後、工程01から制作を開始します</div>
+          <div class="stage-desc">作品名と総字数を設定後、工程01から制作を開始します</div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div class="input-group" style="grid-column:1/-1">
+          <label>作品名（プロジェクト名）</label>
+          <input type="text" id="init-name" value="${meta.name||''}" placeholder="例: 星降る境界線">
+        </div>
         <div class="input-group">
           <label>総字数目標</label>
           <input type="number" id="init-chars" value="${meta.totalChars||''}" placeholder="例: 10000" min="3000" step="500">
@@ -42,18 +46,19 @@ const StageRenderers = {
     `;
 
     document.getElementById('init-save-btn').onclick = async () => {
+      const name = document.getElementById('init-name').value.trim();
       const chars = parseInt(document.getElementById('init-chars').value);
       const genre = document.getElementById('init-genre').value.trim();
       const theme = document.getElementById('init-theme').value.trim();
       const style = document.getElementById('init-style').value.trim();
       if (!chars || chars < 1000) { showToast('総字数を正しく入力してください', 'error'); return; }
+      if (name) { await ProjectState.set('meta.name', name); document.getElementById('nav-project-name').textContent = name; }
       await ProjectState.set('meta.totalChars', chars);
       await ProjectState.set('meta.genre', genre);
       await ProjectState.set('meta.theme', theme);
       await ProjectState.set('meta.styleSample', style);
       await ProjectState.set('stageStatus.0', 'done');
       document.getElementById('total-chars-display').textContent = chars.toLocaleString() + '字';
-      document.getElementById('nav-project-name').textContent = await ProjectState.get('meta.name') || '無題';
       unlockStage(1);
       showToast('設定を保存しました', 'success');
       navigateStage(1);
@@ -398,20 +403,54 @@ const StageRenderers = {
   async render4(container) {
     const state = await ProjectState.load();
     const chapData = state.stages.chapters;
+    const totalChars = state.meta.totalChars || 10000;
+
+    // プロット幕字数（工程02と同じ比率）
+    const ACT_RATIOS = { act1: 0.20, act2: 0.60, act3: 0.20 };
+    const act1Chars = Math.round(totalChars * ACT_RATIOS.act1);
+    const act2Chars = Math.round(totalChars * ACT_RATIOS.act2);
+    const act3Chars = totalChars - act1Chars - act2Chars;
+    const chapCount = c => Math.max(1, Math.round(c / 2500));
+
     container.innerHTML = `
       <div class="stage-header">
         <span class="stage-badge">04</span>
         <div>
           <div class="stage-title">章立て・構成</div>
-          <div class="stage-desc">各章の末尾フックは「疑問」「誤解」「選択」のいずれかに分類</div>
+          <div class="stage-desc">プロット幕字数を分割して章に割り当て。全章合計＝総字数 ${totalChars.toLocaleString()}字</div>
+        </div>
+      </div>
+      <div class="act-breakdown">
+        <div class="act-breakdown-item">
+          <span class="act-breakdown-label">第一幕（序）</span>
+          <span class="act-breakdown-chars">${act1Chars.toLocaleString()}字</span>
+          <span class="act-breakdown-chaps">約${chapCount(act1Chars)}章</span>
+        </div>
+        <div class="act-breakdown-sep">＋</div>
+        <div class="act-breakdown-item">
+          <span class="act-breakdown-label">第二幕（破）</span>
+          <span class="act-breakdown-chars">${act2Chars.toLocaleString()}字</span>
+          <span class="act-breakdown-chaps">約${chapCount(act2Chars)}章</span>
+        </div>
+        <div class="act-breakdown-sep">＋</div>
+        <div class="act-breakdown-item">
+          <span class="act-breakdown-label">第三幕（急）</span>
+          <span class="act-breakdown-chars">${act3Chars.toLocaleString()}字</span>
+          <span class="act-breakdown-chaps">約${chapCount(act3Chars)}章</span>
+        </div>
+        <div class="act-breakdown-sep">=</div>
+        <div class="act-breakdown-item total">
+          <span class="act-breakdown-label">合計</span>
+          <span class="act-breakdown-chars">${totalChars.toLocaleString()}字</span>
+          <span class="act-breakdown-chaps">約${chapCount(act1Chars)+chapCount(act2Chars)+chapCount(act3Chars)}章</span>
         </div>
       </div>
       <div class="ai-action-bar">
-        <div class="ai-hint">プロットから章構成を生成します</div>
+        <div class="ai-hint">プロット幕字数を元に章ごとの字数を配分します</div>
         <button class="btn-ai" id="chap-gen-btn"><div class="spinner"></div>✦ AI章構成生成</button>
       </div>
       <div id="chap-results">
-        ${chapData.raw ? `<textarea class="large" id="chap-raw-edit">${chapData.raw}</textarea>` : '<p style="color:var(--text-muted);font-size:13px">生成後に表示されます</p>'}
+        ${chapData.raw ? `<textarea class="large" id="chap-raw-edit">${chapData.raw.replace(/</g,'&lt;')}</textarea>` : '<p style="color:var(--text-muted);font-size:13px">生成後に表示されます</p>'}
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn-success" id="chap-confirm-btn">章構成確定→工程05へ →</button>
@@ -476,12 +515,40 @@ const StageRenderers = {
     btn.disabled = true; btn.classList.add('loading');
     try {
       const state = await ProjectState.load();
-      const plot = [state.stages.plot.acts.act1, state.stages.plot.acts.act2, state.stages.plot.acts.act3].join('\n\n');
+      const totalChars = state.meta.totalChars || 10000;
+      const act1 = state.stages.plot.acts.act1 || '';
+      const act2 = state.stages.plot.acts.act2 || '';
+      const act3 = state.stages.plot.acts.act3 || '';
+      const plot = [act1, act2, act3].join('\n\n');
       const nouns = state.nouns.map(n => n.text).join('、') || 'なし';
+
+      // プロット幕字数の再計算（INITと同じ比率を使用）
+      const ACT_RATIOS = { act1: 0.20, act2: 0.60, act3: 0.20 };
+      const act1Chars = Math.round(totalChars * ACT_RATIOS.act1);
+      const act2Chars = Math.round(totalChars * ACT_RATIOS.act2);
+      const act3Chars = totalChars - act1Chars - act2Chars;
+
+      // 章数の目安（幕字数 ÷ 2500字で四捨五入、最低1章）
+      const chapCount = chars => Math.max(1, Math.round(chars / 2500));
+      const act1Count = chapCount(act1Chars);
+      const act2Count = chapCount(act2Chars);
+      const act3Count = chapCount(act3Chars);
+
       const tmpl = await TemplateManager.get('chapters');
-      const raw = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, { plot, total_chars: state.meta.totalChars, nouns }));
+      const raw = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, {
+        plot,
+        total_chars: totalChars,
+        act1_chars: act1Chars,
+        act2_chars: act2Chars,
+        act3_chars: act3Chars,
+        act1_chap_count: act1Count,
+        act2_chap_count: act2Count,
+        act3_chap_count: act3Count,
+        nouns,
+      }));
+
       await ProjectState.set('stages.chapters.raw', raw);
-      document.getElementById('chap-results').innerHTML = `<textarea class="large" id="chap-raw-edit">${raw}</textarea>`;
+      document.getElementById('chap-results').innerHTML = `<textarea class="large" id="chap-raw-edit">${raw.replace(/</g,'&lt;')}</textarea>`;
       showToast('章構成生成完了', 'success');
     } catch (e) { showToast(e.message, 'error'); }
     finally { btn.disabled = false; btn.classList.remove('loading'); }

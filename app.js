@@ -99,17 +99,50 @@ const LS = {
   remove: k => localStorage.removeItem('lns_' + k),
 };
 
+// プロバイダーUIの同期
+function _syncProviderUI(provider) {
+  const keyLabel = document.getElementById('api-key-label');
+  const keyInput = document.getElementById('api-key-input');
+  const claudeGroup = document.getElementById('optgroup-claude');
+  const openaiGroup = document.getElementById('optgroup-openai');
+  const modelSelect = document.getElementById('model-select');
+
+  if (provider === 'openai') {
+    if (keyLabel) keyLabel.textContent = 'APIキー（OpenAI）';
+    if (keyInput) keyInput.placeholder = 'sk-...';
+    if (claudeGroup) claudeGroup.disabled = true;
+    if (openaiGroup) { openaiGroup.disabled = false; openaiGroup.style.display = ''; }
+    // モデルがClaudeのままなら先頭OpenAIモデルに切り替え
+    const cur = modelSelect?.value || '';
+    if (cur.startsWith('claude-')) modelSelect.value = 'gpt-4o';
+  } else {
+    if (keyLabel) keyLabel.textContent = 'APIキー（Anthropic）';
+    if (keyInput) keyInput.placeholder = 'sk-ant-...';
+    if (claudeGroup) claudeGroup.disabled = false;
+    if (openaiGroup) { openaiGroup.disabled = true; openaiGroup.style.display = 'none'; }
+    const cur = modelSelect?.value || '';
+    if (!cur.startsWith('claude-')) modelSelect.value = 'claude-sonnet-4-20250514';
+  }
+}
+
 function initSettings() {
   const keyInput = document.getElementById('api-key-input');
   const modelSelect = document.getElementById('model-select');
   const tokensInput = document.getElementById('max-tokens-input');
-  const projectNameInput = document.getElementById('project-name-input');
 
   // Load saved values
   keyInput.value = LS.get('api_key') || '';
   modelSelect.value = LS.get('model') || 'claude-sonnet-4-20250514';
   tokensInput.value = LS.get('max_tokens') || '4000';
-  ProjectState.get('meta.name').then(n => { if (n) projectNameInput.value = n; });
+  // provider radio restore
+  const savedProvider = LS.get('provider') || 'claude';
+  const providerRadio = document.querySelector(`input[name="api-provider"][value="${savedProvider}"]`);
+  if (providerRadio) { providerRadio.checked = true; _syncProviderUI(savedProvider); }
+
+  // Provider toggle
+  document.querySelectorAll('input[name="api-provider"]').forEach(radio => {
+    radio.addEventListener('change', () => _syncProviderUI(radio.value));
+  });
 
   // Toggle key visibility
   document.getElementById('toggle-key-btn').onclick = () => {
@@ -120,14 +153,11 @@ function initSettings() {
 
   // Save settings
   document.getElementById('save-settings-btn').onclick = async () => {
+    const provider = document.querySelector('input[name="api-provider"]:checked')?.value || 'claude';
+    LS.set('provider', provider);
     LS.set('api_key', keyInput.value.trim());
     LS.set('model', modelSelect.value);
     LS.set('max_tokens', tokensInput.value);
-    const name = projectNameInput.value.trim();
-    if (name) {
-      await ProjectState.set('meta.name', name);
-      document.getElementById('nav-project-name').textContent = name;
-    }
     apiClient.updateConfig();
     updateApiStatus();
     showToast('設定を保存しました', 'success');
