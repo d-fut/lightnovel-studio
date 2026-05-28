@@ -12,51 +12,150 @@ const StageRenderers = {
   async render0(container) {
     const state = await ProjectState.load();
     const meta = state.meta;
+
+    // ジャンルマスター
+    const GENRES = {
+      'SF・近未来': ['サイバーパンク','スペースオペラ','ディストピア','タイムトラベル','AI・ロボット','バイオパンク','ポストアポカリプス'],
+      'ファンタジー': ['ハイファンタジー','ダークファンタジー','異世界転移','魔法学校','神話・伝承','スチームパンク','剣と魔法'],
+      'ミステリー・スリラー': ['本格ミステリ','サスペンス','ホラー','心理スリラー','クライムノワール','怪談・怪異'],
+      '恋愛・青春': ['ラブコメ','純愛','学園恋愛','社会人恋愛','片思い','三角関係'],
+      'アクション・冒険': ['バトルアクション','冒険・探索','スポーツ','サバイバル','格闘'],
+      '日常・ヒューマン': ['日常系','家族・絆','成長・青春','職業・仕事','コメディ','社会派'],
+    };
+
+    // テーママスター
+    const THEMES = [
+      'アイデンティティ','自由と束縛','喪失と再生','愛と犠牲','正義と悪','孤独と繋がり',
+      '成長と挫折','記憶と忘却','運命と選択','生と死','復讐と赦し','裏切りと信頼',
+      '権力と腐敗','テクノロジーと人間性','多様性と偏見','夢と現実',
+    ];
+
+    // 感情曲線6類型
+    const ARC_TYPES = [
+      { key: 'rise',        label: '成功型',   shape: '↗',     desc: '一貫して上昇' },
+      { key: 'fall',        label: '悲劇型',   shape: '↘',     desc: '一貫して下降' },
+      { key: 'fall_rise',   label: '逆転型',   shape: '↓↑',   desc: '落ちてから逆転' },
+      { key: 'rise_fall',   label: '絶望型',   shape: '↑↓',   desc: '上がってから転落' },
+      { key: 'icarus',      label: '感動型',   shape: '↑↓↑', desc: '山あり谷あり感動' },
+      { key: 'comedy',      label: 'お笑い型', shape: '↓↑↓', desc: '谷から笑いで包む' },
+    ];
+
+    const charsVal = meta.totalChars || 10000;
+    const isShort = charsVal <= 20000;
+
     container.innerHTML = `
       <div class="stage-header">
         <span class="stage-badge">INIT</span>
         <div>
           <div class="stage-title">プロジェクト設定</div>
-          <div class="stage-desc">作品名と総字数を設定後、工程01から制作を開始します</div>
+          <div class="stage-desc">作品の基本情報を設定します</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+      <div class="init-grid">
         <div class="input-group" style="grid-column:1/-1">
-          <label>作品名（プロジェクト名）</label>
+          <label>作品名</label>
           <input type="text" id="init-name" value="${meta.name||''}" placeholder="例: 星降る境界線">
         </div>
+
         <div class="input-group">
           <label>総字数目標</label>
-          <input type="number" id="init-chars" value="${meta.totalChars||''}" placeholder="例: 10000" min="3000" step="500">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="init-chars" value="${charsVal}" placeholder="10000" min="3000" step="500" style="flex:1">
+            <span id="init-chars-label" class="chars-badge ${isShort?'short':''}">${isShort?'短編':'長編'}</span>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted)">2万字以下：短編、2万字超：長編</span>
         </div>
+
         <div class="input-group">
-          <label>ジャンル</label>
-          <input type="text" id="init-genre" value="${meta.genre||''}" placeholder="例: SF、ファンタジー、現代魔法">
+          <label>スタイルサンプル（任意）</label>
+          <textarea id="init-style" placeholder="自分の文体サンプル（200字程度）">${meta.styleSample||''}</textarea>
         </div>
+
         <div class="input-group" style="grid-column:1/-1">
-          <label>テーマキーワード</label>
-          <input type="text" id="init-theme" value="${meta.theme||''}" placeholder="例: アイデンティティ、喪失と再生、AIと人間">
+          <label>ジャンル <span style="font-size:11px;color:var(--text-muted)">（複数選択可・自由入力も可）</span></label>
+          <div class="genre-picker" id="genre-picker">
+            ${Object.entries(GENRES).map(([cat, items]) => `
+              <div class="genre-cat-label">${cat}</div>
+              <div class="genre-chips">
+                ${items.map(g => `<div class="genre-chip ${(meta.genreList||[]).includes(g)?'active':''}" data-val="${g}">${g}</div>`).join('')}
+              </div>
+            `).join('')}
+          </div>
+          <input type="text" id="init-genre-free" value="${meta.genreFree||''}" placeholder="その他・自由入力（例：ラブコメ×SF）" style="margin-top:8px">
         </div>
+
         <div class="input-group" style="grid-column:1/-1">
-          <label>スタイルサンプル（文体参考文・任意）</label>
-          <textarea id="init-style" placeholder="自分の文体サンプルをここに貼る（200字程度）">${meta.styleSample||''}</textarea>
+          <label>テーマ <span style="font-size:11px;color:var(--text-muted)">（複数選択可・自由入力も可）</span></label>
+          <div class="theme-chips" id="theme-chips">
+            ${THEMES.map(t => `<div class="genre-chip theme-chip ${(meta.themeList||[]).includes(t)?'active':''}" data-val="${t}">${t}</div>`).join('')}
+          </div>
+          <input type="text" id="init-theme-free" value="${meta.themeFree||''}" placeholder="その他・自由入力（例：AI倫理と自己同一性）" style="margin-top:8px">
+        </div>
+
+        <div class="input-group" style="grid-column:1/-1">
+          <label>全体の感情曲線</label>
+          <div class="arc-grid" id="arc-grid">
+            ${ARC_TYPES.map(a => `
+              <div class="arc-card ${meta.arcType===a.key?'active':''}" data-arc="${a.key}">
+                <div class="arc-shape">${a.shape}</div>
+                <div class="arc-label">${a.label}</div>
+                <div class="arc-desc">${a.desc}</div>
+              </div>
+            `).join('')}
+          </div>
         </div>
       </div>
+
       <button class="btn-primary" id="init-save-btn">保存して工程01へ進む →</button>
     `;
 
+    // 総字数ラベル更新
+    document.getElementById('init-chars').addEventListener('input', e => {
+      const v = parseInt(e.target.value) || 0;
+      const badge = document.getElementById('init-chars-label');
+      badge.textContent = v <= 20000 ? '短編' : '長編';
+      badge.className = 'chars-badge ' + (v <= 20000 ? 'short' : 'long');
+    });
+
+    // ジャンルチップ
+    document.querySelectorAll('.genre-chip').forEach(chip => {
+      chip.addEventListener('click', () => chip.classList.toggle('active'));
+    });
+
+    // 感情曲線
+    document.querySelectorAll('.arc-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.arc-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+      });
+    });
+
     document.getElementById('init-save-btn').onclick = async () => {
-      const name = document.getElementById('init-name').value.trim();
-      const chars = parseInt(document.getElementById('init-chars').value);
-      const genre = document.getElementById('init-genre').value.trim();
-      const theme = document.getElementById('init-theme').value.trim();
-      const style = document.getElementById('init-style').value.trim();
+      const name    = document.getElementById('init-name').value.trim();
+      const chars   = parseInt(document.getElementById('init-chars').value);
+      const genreList  = [...document.querySelectorAll('.genre-chip.active')].map(c => c.dataset.val);
+      const genreFree  = document.getElementById('init-genre-free').value.trim();
+      const themeList  = [...document.querySelectorAll('.theme-chip.active')].map(c => c.dataset.val);
+      const themeFree  = document.getElementById('init-theme-free').value.trim();
+      const arcType    = document.querySelector('.arc-card.active')?.dataset.arc || '';
+
       if (!chars || chars < 1000) { showToast('総字数を正しく入力してください', 'error'); return; }
+
+      // 表示用の結合文字列も保存
+      const genre = [...genreList, ...(genreFree ? [genreFree] : [])].join('・') || '未設定';
+      const theme = [...themeList, ...(themeFree ? [themeFree] : [])].join('・') || '未設定';
+
       if (name) { await ProjectState.set('meta.name', name); document.getElementById('nav-project-name').textContent = name; }
       await ProjectState.set('meta.totalChars', chars);
       await ProjectState.set('meta.genre', genre);
+      await ProjectState.set('meta.genreList', genreList);
+      await ProjectState.set('meta.genreFree', genreFree);
       await ProjectState.set('meta.theme', theme);
-      await ProjectState.set('meta.styleSample', style);
+      await ProjectState.set('meta.themeList', themeList);
+      await ProjectState.set('meta.themeFree', themeFree);
+      await ProjectState.set('meta.arcType', arcType);
+      await ProjectState.set('meta.styleSample', document.getElementById('init-style').value.trim());
       await ProjectState.set('stageStatus.0', 'done');
       document.getElementById('total-chars-display').textContent = chars.toLocaleString() + '字';
       unlockStage(1);
@@ -158,7 +257,12 @@ const StageRenderers = {
       if (!totalChars) { showToast('INIT工程で総字数を設定してください', 'error'); return; }
 
       const tmpl = await TemplateManager.get('concept');
-      const userPrompt = buildPrompt(tmpl.user, { total_chars: totalChars, genre, theme });
+      const userPrompt = buildPrompt(tmpl.user, {
+        total_chars: totalChars,
+        genre,
+        theme,
+        arc_type: state.meta.arcType || '未設定',
+      });
       const raw = await apiClient.call(tmpl.system, userPrompt);
 
       // MarkdownからコンセプトオブジェクトをパースしてJSON配列に変換
@@ -307,6 +411,7 @@ const StageRenderers = {
       const userPrompt = buildPrompt(tmpl.user, {
         total_chars: totalChars,
         genre, theme, concept, nouns,
+        arc_type: state.meta.arcType || '未設定',
         climax_pos: climaxPos,
         act1_chars: act1Chars,
         act2_chars: act2Chars,
@@ -399,64 +504,88 @@ const StageRenderers = {
     finally { btn.disabled = false; btn.classList.remove('loading'); }
   },
 
-  // ===== STAGE 4: CHAPTERS =====
+  // ===== STAGE 4: SECTIONS (節) =====
   async render4(container) {
     const state = await ProjectState.load();
     const chapData = state.stages.chapters;
     const totalChars = state.meta.totalChars || 10000;
 
-    // プロット幕字数（工程02と同じ比率）
     const ACT_RATIOS = { act1: 0.20, act2: 0.60, act3: 0.20 };
     const act1Chars = Math.round(totalChars * ACT_RATIOS.act1);
     const act2Chars = Math.round(totalChars * ACT_RATIOS.act2);
     const act3Chars = totalChars - act1Chars - act2Chars;
-    const chapCount = c => Math.max(1, Math.round(c / 2500));
+    const secCount = c => Math.max(1, Math.round(c / 2500));
+    const list = chapData.list || [];
+    const hasGraph = list.length > 0;
 
     container.innerHTML = `
       <div class="stage-header">
         <span class="stage-badge">04</span>
         <div>
-          <div class="stage-title">章立て・構成</div>
-          <div class="stage-desc">プロット幕字数を分割して章に割り当て。全章合計＝総字数 ${totalChars.toLocaleString()}字</div>
+          <div class="stage-title">節立て・構成</div>
+          <div class="stage-desc">プロット幕字数を分割して節に割り当て。全節合計＝総字数 ${totalChars.toLocaleString()}字</div>
         </div>
       </div>
       <div class="act-breakdown">
         <div class="act-breakdown-item">
           <span class="act-breakdown-label">第一幕（序）</span>
           <span class="act-breakdown-chars">${act1Chars.toLocaleString()}字</span>
-          <span class="act-breakdown-chaps">約${chapCount(act1Chars)}章</span>
+          <span class="act-breakdown-chaps">約${secCount(act1Chars)}節</span>
         </div>
         <div class="act-breakdown-sep">＋</div>
         <div class="act-breakdown-item">
           <span class="act-breakdown-label">第二幕（破）</span>
           <span class="act-breakdown-chars">${act2Chars.toLocaleString()}字</span>
-          <span class="act-breakdown-chaps">約${chapCount(act2Chars)}章</span>
+          <span class="act-breakdown-chaps">約${secCount(act2Chars)}節</span>
         </div>
         <div class="act-breakdown-sep">＋</div>
         <div class="act-breakdown-item">
           <span class="act-breakdown-label">第三幕（急）</span>
           <span class="act-breakdown-chars">${act3Chars.toLocaleString()}字</span>
-          <span class="act-breakdown-chaps">約${chapCount(act3Chars)}章</span>
+          <span class="act-breakdown-chaps">約${secCount(act3Chars)}節</span>
         </div>
         <div class="act-breakdown-sep">=</div>
         <div class="act-breakdown-item total">
           <span class="act-breakdown-label">合計</span>
           <span class="act-breakdown-chars">${totalChars.toLocaleString()}字</span>
-          <span class="act-breakdown-chaps">約${chapCount(act1Chars)+chapCount(act2Chars)+chapCount(act3Chars)}章</span>
+          <span class="act-breakdown-chaps">約${secCount(act1Chars)+secCount(act2Chars)+secCount(act3Chars)}節</span>
         </div>
       </div>
-      <div class="ai-action-bar">
-        <div class="ai-hint">プロット幕字数を元に章ごとの字数を配分します</div>
-        <button class="btn-ai" id="chap-gen-btn"><div class="spinner"></div>✦ AI章構成生成</button>
+      <div class="stage4-tabs">
+        <button class="s4tab active" data-tab="edit">構成編集</button>
+        <button class="s4tab" data-tab="graph">感情曲線グラフ</button>
       </div>
-      <div id="chap-results">
-        ${chapData.raw ? `<textarea class="large" id="chap-raw-edit">${chapData.raw.replace(/</g,'&lt;')}</textarea>` : '<p style="color:var(--text-muted);font-size:13px">生成後に表示されます</p>'}
+      <div id="s4-edit" class="s4-panel">
+        <div class="ai-action-bar">
+          <div class="ai-hint">プロット幕字数を元に節ごとの字数・感情を配分します</div>
+          <button class="btn-ai" id="chap-gen-btn"><div class="spinner"></div>✦ AI節構成生成</button>
+        </div>
+        <div id="chap-results">
+          ${chapData.raw
+            ? `<textarea class="large" id="chap-raw-edit">${chapData.raw.replace(/</g,'&lt;')}</textarea>`
+            : '<p style="color:var(--text-muted);font-size:13px">生成後に表示されます</p>'}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-success" id="chap-confirm-btn">節構成確定→工程05へ →</button>
+          <button class="btn-secondary" id="chap-save-btn">保存</button>
+        </div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn-success" id="chap-confirm-btn">章構成確定→工程05へ →</button>
-        <button class="btn-secondary" id="chap-save-btn">保存</button>
+      <div id="s4-graph" class="s4-panel hidden">
+        ${hasGraph
+          ? `<div class="emotion-graph-wrap"><canvas id="emotion-canvas"></canvas></div>`
+          : '<p style="color:var(--text-muted);padding:32px;text-align:center">節構成を確定するとグラフが表示されます</p>'}
       </div>
     `;
+
+    document.querySelectorAll('.s4tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.s4tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.s4-panel').forEach(p => p.classList.add('hidden'));
+        btn.classList.add('active');
+        document.getElementById(`s4-${btn.dataset.tab}`).classList.remove('hidden');
+        if (btn.dataset.tab === 'graph' && hasGraph) this._drawEmotionGraph(list);
+      });
+    });
 
     document.getElementById('chap-gen-btn').onclick = () => this._runChapGen();
     document.getElementById('chap-save-btn').onclick = async () => {
@@ -468,46 +597,113 @@ const StageRenderers = {
       if (el) {
         const raw = el.value;
         await ProjectState.set('stages.chapters.raw', raw);
-
-        // MarkdownからchapterオブジェクトのListを生成
-        // 書式: ### 第N章「タイトル」｜目安X字
-        const chapBlocks = raw.split(/(?=###\s*第\d+章)/);
-        const list = chapBlocks
-          .filter(b => /###\s*第\d+章/.test(b))
+        // #### 第N節「タイトル」｜目安X字 ｜ 感情：↑/→/↓
+        const secBlocks = raw.split(/(?=####\s*第\d+節)/);
+        const list = secBlocks
+          .filter(b => /####\s*第\d+節/.test(b))
           .map(block => {
-            const titleMatch = block.match(/###\s*第(\d+)章[「『]?([^」』｜|\n]*)[」』]?[｜|]?(?:目安)?(\d+)?字?/);
-            const povMatch = block.match(/\*\*視点人物[：:]\*\*\s*([^\n]+)/);
-            const eventsMatch = block.match(/\*\*主な出来事[：:]\*\*\s*([^\n]+)/);
-            const openingMatch = block.match(/\*\*冒頭の引き[：:]\*\*\s*([^\n]+)/);
-            const endingMatch = block.match(/\*\*末尾フック[：:]\*\*\s*([^\n]+)/);
-            const hookTypeMatch = block.match(/【(疑問|誤解|選択)】/);
+            const tM = block.match(/####\s*第(\d+)節[「『]?([^」』｜|\n]*)[」』]?[｜|]?(?:目安)?(\d+)?字?/);
+            const eM = block.match(/感情[：:]\s*([↑→↓])/);
+            const povM = block.match(/\*\*視点人物[：:]\*\*\s*([^\n]+)/);
+            const evM  = block.match(/\*\*主な出来事[：:]\*\*\s*([^\n]+)/);
+            const opM  = block.match(/\*\*冒頭の引き[：:]\*\*\s*([^\n]+)/);
+            const enM  = block.match(/\*\*末尾フック[：:]\*\*\s*([^\n]+)/);
+            const hkM  = block.match(/【(疑問|誤解|選択)】/);
             return {
-              chapter_num: titleMatch ? parseInt(titleMatch[1]) : 0,
-              title: titleMatch ? titleMatch[2].trim() : '',
-              pov: povMatch ? povMatch[1].trim() : '',
-              events: eventsMatch ? eventsMatch[1].trim() : '',
-              opening_hook: openingMatch ? openingMatch[1].trim() : '',
-              ending_hook: endingMatch ? endingMatch[1].trim() : '',
-              hook_type: hookTypeMatch ? hookTypeMatch[1] : '',
-              target_chars: titleMatch?.[3] ? parseInt(titleMatch[3]) : 2500,
+              chapter_num: tM ? parseInt(tM[1]) : 0,
+              title: tM ? tM[2].trim() : '',
+              emotion: eM ? eM[1] : '→',
+              pov: povM ? povM[1].trim() : '',
+              events: evM ? evM[1].trim() : '',
+              opening_hook: opM ? opM[1].trim() : '',
+              ending_hook: enM ? enM[1].trim() : '',
+              hook_type: hkM ? hkM[1] : '',
+              target_chars: tM?.[3] ? parseInt(tM[3]) : 2500,
             };
           })
           .filter(c => c.chapter_num > 0);
 
         if (list.length > 0) {
           await ProjectState.set('stages.chapters.list', list);
-          showToast(`${list.length}章を解析してリスト化しました`, 'success');
+          showToast(`${list.length}節を解析してリスト化しました`, 'success');
         } else {
-          // パース失敗時は章タブなしで工程05へ進めるよう最低限のリストを生成
-          const fallback = [{ chapter_num: 1, title: '（タイトル未解析）', pov: '', events: '', opening_hook: '', ending_hook: '', hook_type: '', target_chars: 2500 }];
+          const fallback = [{ chapter_num: 1, title: '（タイトル未解析）', emotion: '→', pov: '', events: '', opening_hook: '', ending_hook: '', hook_type: '', target_chars: 2500 }];
           await ProjectState.set('stages.chapters.list', fallback);
-          showToast('章の自動解析に失敗しました。工程05で手動確認してください', 'info');
+          showToast('節の自動解析に失敗しました。工程05で手動確認してください', 'info');
         }
       }
       await ProjectState.set('stageStatus.4', 'done');
       updateStageStatus(4, 'done'); unlockStage(5);
       navigateStage(5);
     };
+  },
+
+  // 感情曲線グラフ（Canvas）
+  _drawEmotionGraph(sections) {
+    const canvas = document.getElementById('emotion-canvas');
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    canvas.width = parent.clientWidth || 700;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const pad = { l: 48, r: 24, t: 20, b: 48 };
+    const gW = W - pad.l - pad.r, gH = H - pad.t - pad.b;
+
+    // 累積スコアで折れ線
+    const scores = [0.5];
+    sections.forEach(s => {
+      const last = scores[scores.length - 1];
+      const delta = s.emotion === '↑' ? 0.12 : s.emotion === '↓' ? -0.12 : 0;
+      scores.push(Math.min(0.92, Math.max(0.08, last + delta)));
+    });
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = '#2a2a3d'; ctx.lineWidth = 1;
+    [0.2, 0.4, 0.6, 0.8].forEach(y => {
+      ctx.beginPath();
+      ctx.moveTo(pad.l, pad.t + gH * y);
+      ctx.lineTo(pad.l + gW, pad.t + gH * y);
+      ctx.stroke();
+    });
+    ctx.fillStyle = '#666688'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText('高', pad.l - 6, pad.t + 14);
+    ctx.fillText('中', pad.l - 6, pad.t + gH * 0.5 + 4);
+    ctx.fillText('低', pad.l - 6, pad.t + gH - 4);
+
+    const pts = scores.map((s, i) => ({
+      x: pad.l + (i / (scores.length - 1)) * gW,
+      y: pad.t + s * gH,
+    }));
+
+    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gH);
+    grad.addColorStop(0, 'rgba(200,169,110,0.25)');
+    grad.addColorStop(1, 'rgba(200,169,110,0)');
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pad.t + gH);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length - 1].x, pad.t + gH);
+    ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+
+    ctx.beginPath();
+    ctx.strokeStyle = '#c8a96e'; ctx.lineWidth = 2.5;
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+
+    ctx.font = '11px monospace'; ctx.textAlign = 'center';
+    pts.slice(1).forEach((p, i) => {
+      const sec = sections[i];
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#c8a96e'; ctx.fill();
+      ctx.fillStyle = sec.emotion === '↑' ? '#5cb87e' : sec.emotion === '↓' ? '#c45454' : '#7eb8d4';
+      ctx.fillText(sec.emotion, p.x, p.y - 10);
+      ctx.fillStyle = '#666688';
+      ctx.fillText(`${i+1}`, p.x, pad.t + gH + 16);
+    });
+    ctx.fillStyle = '#666688'; ctx.textAlign = 'center';
+    ctx.fillText('節番号', pad.l + gW / 2, H - 4);
   },
 
   async _runChapGen() {
@@ -562,7 +758,7 @@ const StageRenderers = {
     const currentChap = state._currentDraftChap || 0;
 
     if (chapters.length === 0) {
-      container.innerHTML = `<div class="stage-header"><span class="stage-badge">05</span><div><div class="stage-title">章ごとの下書き</div><div class="stage-desc" style="color:var(--warning)">章構成が未確定です。工程04を完了してください</div></div></div>`;
+      container.innerHTML = `<div class="stage-header"><span class="stage-badge">05</span><div><div class="stage-title">節ごとの下書き</div><div class="stage-desc" style="color:var(--warning)">章構成が未確定です。工程04を完了してください</div></div></div>`;
       return;
     }
 
@@ -573,21 +769,21 @@ const StageRenderers = {
       <div class="stage-header">
         <span class="stage-badge">05</span>
         <div>
-          <div class="stage-title">章ごとの下書き</div>
-          <div class="stage-desc">章ごとに生成→要約自動作成（トークン上限対策）</div>
+          <div class="stage-title">節ごとの下書き</div>
+          <div class="stage-desc">節ごとに生成→要約自動作成（トークン上限対策）</div>
         </div>
       </div>
-      <div class="chapter-tabs" id="chapter-tabs">
+      <div class="section-tabs" id="section-tabs">
         ${chapters.map((c, i) => `
-          <div class="chapter-tab ${i === currentChap ? 'active' : ''} ${drafts[i]?.draft ? 'done' : ''}"
+          <div class="section-tab ${i === currentChap ? 'active' : ''} ${drafts[i]?.draft ? 'done' : ''}"
             data-chap="${i}" onclick="StageRenderers._switchChapter(${i})">
             ${c.chapter_num || (i+1)}章
           </div>
         `).join('')}
       </div>
-      ${draft.summary ? `<div class="chapter-summary-box"><strong>前章要約：</strong>${draft.summary}</div>` : ''}
+      ${draft.summary ? `<div class="chapter-summary-box"><strong>前節要約：</strong>${draft.summary}</div>` : ''}
       <div class="result-box" style="margin-bottom:8px">
-        <div class="result-label">現在の章：第${chap.chapter_num || (currentChap+1)}章「${chap.title || ''}」</div>
+        <div class="result-label">現在の節：第${chap.chapter_num || (currentChap+1)}章「${chap.title || ''}」</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
           視点：${chap.pov||'—'} ／ 目安：${chap.target_chars ? chap.target_chars.toLocaleString() : '—'}字 ／ フック種別：${chap.hook_type||'—'}
         </div>
@@ -668,7 +864,7 @@ const StageRenderers = {
 
       // chapter_spec をMarkdown形式で組み立て
       const chapSpec = [
-        `- 章番号：第${chap.chapter_num || (chapIdx+1)}章`,
+        `- 節番号：第${chap.chapter_num || (chapIdx+1)}章`,
         `- タイトル：${chap.title || '（未設定）'}`,
         `- 視点人物：${chap.pov || '（未設定）'}`,
         `- 主な出来事：${chap.events || '（未設定）'}`,
@@ -878,92 +1074,176 @@ const StageRenderers = {
     finally { btn.disabled = false; btn.classList.remove('loading'); }
   },
 
-  // ===== STAGE 8: POLISH =====
+  // ===== STAGE 8: POLISH + EPISODE COMPOSE =====
+  // 連続ボタン方式：節ごとに順番に校正 → 完了後に話再構成
   async render8(container) {
     const state = await ProjectState.load();
-    const chapters = state.stages.chapters.list || [];
-    const drafts = state.stages.drafts || {};
+    const sections = state.stages.chapters.list || [];
+    const drafts   = state.stages.drafts || {};
+    const polished = state.stages.polished || {}; // {idx: text}
+    const episodes = state.stages.episodes || []; // [{ep, title, sections:[idx]}]
+    const step     = state._polish_step ?? 0;     // 現在処理中の節インデックス
 
-    const draftOptions = chapters
-      .filter((_, i) => drafts[i]?.draft)
-      .map(c => {
-        const i = chapters.indexOf(c);
-        return `<option value="${i}">第${c.chapter_num || (i+1)}章「${c.title || ''}」</option>`;
-      }).join('');
+    // 処理対象節リスト（下書きがある節のみ）
+    const targets = sections.map((s,i) => i).filter(i => drafts[i]?.draft);
+    const total   = targets.length;
+    const curIdx  = targets[step] ?? null;
+    const curSec  = curIdx !== null ? sections[curIdx] : null;
+    const done    = step >= total;
 
     container.innerHTML = `
       <div class="stage-header">
         <span class="stage-badge">08</span>
         <div>
-          <div class="stage-title">最終仕上げ</div>
-          <div class="stage-desc">誤字・読点・語句重複・語尾一貫性の校正</div>
+          <div class="stage-title">最終仕上げ・話再構成</div>
+          <div class="stage-desc">節を順番に校正 → 1万字前後で「話」にまとめてサブタイトルを付与</div>
         </div>
       </div>
-      ${draftOptions ? `
-      <div class="input-group">
-        <label>下書きから読み込む</label>
-        <div style="display:flex;gap:8px">
-          <select id="polish-chap-select" style="flex:1">
-            <option value="">— 章を選択 —</option>
-            ${draftOptions}
-          </select>
-          <button class="btn-secondary" id="polish-load-btn">読み込む</button>
-        </div>
+
+      <!-- ステップ進捗 -->
+      <div class="polish-progress">
+        <div class="polish-progress-bar" style="width:${total ? Math.round(Math.min(step,total)/total*100) : 0}%"></div>
+        <span class="polish-progress-label">${done ? '全節校正完了' : `節 ${step+1} / ${total}`}</span>
       </div>
-      ` : ''}
-      <div class="input-group">
-        <label>対象テキスト</label>
-        <textarea id="polish-input" class="large" placeholder="校正する本文を貼り付けてください"></textarea>
+
+      ${!done ? `
+      <!-- 現在の節を校正 -->
+      <div class="result-box" style="margin-bottom:8px">
+        <div class="result-label">現在の節：第${curSec?.chapter_num||'?'}節「${curSec?.title||''}」　目安 ${curSec?.target_chars?.toLocaleString()||'—'}字</div>
       </div>
       <div class="ai-action-bar">
-        <div class="ai-hint">固有名詞リストを参照しながら校正します</div>
+        <div class="ai-hint">この節を校正します</div>
         <button class="btn-ai" id="polish-gen-btn"><div class="spinner"></div>✦ AI校正</button>
       </div>
-      <div class="input-group">
-        <label>校正結果</label>
-        <textarea id="polish-output" class="large" placeholder="校正後の本文がここに"></textarea>
-      </div>
+      <textarea id="polish-input" class="large" placeholder="校正前の原文（自動読込）">${drafts[curIdx]?.draft||''}</textarea>
+      <textarea id="polish-output" class="large" placeholder="校正後の本文がここに">${polished[curIdx]||''}</textarea>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn-success" id="polish-confirm-btn">✓ 全工程完了</button>
-        <button class="btn-secondary" id="polish-save-btn">保存</button>
+        <button class="btn-primary" id="polish-next-btn">この節を保存して次へ →</button>
+        <button class="btn-secondary" id="polish-skip-btn">スキップ</button>
       </div>
+      ` : `
+      <!-- 全節完了 → 話再構成 -->
+      <div class="episode-compose">
+        <h3 style="font-family:var(--serif);font-size:16px;margin-bottom:12px;color:var(--accent)">話再構成</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+          1万字前後（7千〜1.2万字）の節をまとめて「第1話」「第2話」として付番し、サブタイトルを付与します。
+        </p>
+        <div class="ai-action-bar">
+          <div class="ai-hint">校正済み節を自動でグルーピングしサブタイトルを生成します</div>
+          <button class="btn-ai" id="episode-gen-btn"><div class="spinner"></div>✦ AI話再構成</button>
+        </div>
+        <div id="episode-results">
+          ${episodes.length > 0 ? this._renderEpisodes(episodes, polished) : '<p style="color:var(--text-muted);font-size:13px">生成後に表示されます</p>'}
+        </div>
+        ${episodes.length > 0 ? `
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn-success" id="finish-btn">✓ 全工程完了</button>
+        </div>` : ''}
+      </div>
+      `}
     `;
 
-    if (draftOptions) {
-      document.getElementById('polish-load-btn').onclick = () => {
-        const sel = document.getElementById('polish-chap-select');
-        const idx = sel.value;
-        if (idx === '') return;
-        const draft = drafts[parseInt(idx)]?.draft || '';
-        document.getElementById('polish-input').value = draft;
-        showToast('下書きを読み込みました', 'info');
+    if (!done) {
+      document.getElementById('polish-gen-btn').onclick = async () => {
+        const btn = document.getElementById('polish-gen-btn');
+        btn.disabled = true; btn.classList.add('loading');
+        try {
+          const ms = document.getElementById('polish-input').value;
+          const st = await ProjectState.load();
+          const nouns = st.nouns.map(n => n.text).join('、') || 'なし';
+          const tmpl = await TemplateManager.get('polish');
+          const raw = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, { manuscript: ms, nouns }));
+          document.getElementById('polish-output').value = raw;
+          showToast('校正完了', 'success');
+        } catch (e) { showToast(e.message, 'error'); }
+        finally { btn.disabled = false; btn.classList.remove('loading'); }
+      };
+      document.getElementById('polish-next-btn').onclick = async () => {
+        const out = document.getElementById('polish-output').value;
+        const cur = (await ProjectState.get('stages.polished')) || {};
+        cur[curIdx] = out || drafts[curIdx]?.draft || '';
+        await ProjectState.set('stages.polished', cur);
+        await ProjectState.set('_polish_step', step + 1);
+        showToast(`第${curSec?.chapter_num}節を保存しました`, 'success');
+        await this.render8(container);
+      };
+      document.getElementById('polish-skip-btn').onclick = async () => {
+        await ProjectState.set('_polish_step', step + 1);
+        await this.render8(container);
+      };
+    } else {
+      const episodeGenBtn = document.getElementById('episode-gen-btn');
+      if (episodeGenBtn) episodeGenBtn.onclick = () => this._runEpisodeCompose(container);
+      const finishBtn = document.getElementById('finish-btn');
+      if (finishBtn) finishBtn.onclick = async () => {
+        await ProjectState.set('stageStatus.8', 'done'); updateStageStatus(8, 'done'); unlockStage(9);
+        showToast('🎉 全工程完了！エクスポートページから出力できます', 'success');
+        navigateStage(9);
       };
     }
-    document.getElementById('polish-gen-btn').onclick = () => this._runPolish();
-    document.getElementById('polish-save-btn').onclick = async () => {
-      await ProjectState.set('stages.polish.raw', document.getElementById('polish-output').value);
-      showToast('保存', 'success');
-    };
-    document.getElementById('polish-confirm-btn').onclick = async () => {
-      await ProjectState.set('stages.polish.raw', document.getElementById('polish-output').value);
-      await ProjectState.set('stageStatus.8', 'done'); updateStageStatus(8, 'done'); unlockStage(9);
-      showToast('🎉 全工程完了！エクスポートページから出力できます', 'success');
-      navigateStage(9);
-    };
   },
 
-  async _runPolish() {
-    const btn = document.getElementById('polish-gen-btn');
+  _renderEpisodes(episodes, polished) {
+    return episodes.map(ep => `
+      <div class="episode-card">
+        <div class="episode-header">
+          <span class="episode-num">第${ep.ep}話</span>
+          <span class="episode-title">「${ep.title}」</span>
+          <span class="episode-chars" style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${ep.totalChars?.toLocaleString()}字</span>
+        </div>
+        <div class="episode-sections">節：${ep.sections.map(i => `第${i+1}節`).join('・')}</div>
+      </div>
+    `).join('');
+  },
+
+  async _runEpisodeCompose(container) {
+    const btn = document.getElementById('episode-gen-btn');
     btn.disabled = true; btn.classList.add('loading');
     try {
-      const manuscript = document.getElementById('polish-input').value;
-      if (!manuscript.trim()) { showToast('テキストを入力してください', 'error'); return; }
       const state = await ProjectState.load();
-      const nouns = state.nouns.map(n => n.text).join('、') || 'なし';
-      const tmpl = await TemplateManager.get('polish');
-      const raw = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, { manuscript, nouns }));
-      document.getElementById('polish-output').value = raw;
-      showToast('校正完了', 'success');
+      const sections = state.stages.chapters.list || [];
+      const polished = state.stages.polished || {};
+      const drafts   = state.stages.drafts   || {};
+
+      // 節の順序で校正済みテキストを収集
+      const texts = sections.map((s, i) => ({
+        idx: i, sec: s,
+        text: polished[i] || drafts[i]?.draft || '',
+        chars: (polished[i] || drafts[i]?.draft || '').length,
+      })).filter(t => t.text.length > 0);
+
+      // 1万字前後でグルーピング（7,000〜12,000字）
+      const TARGET = 10000, MIN = 7000, MAX = 12000;
+      const groups = [];
+      let cur = [], curChars = 0;
+      texts.forEach(t => {
+        if (curChars + t.chars > MAX && cur.length > 0) {
+          groups.push([...cur]);
+          cur = [t]; curChars = t.chars;
+        } else {
+          cur.push(t); curChars += t.chars;
+        }
+      });
+      if (cur.length > 0) groups.push(cur);
+
+      // 各グループにサブタイトルをAI生成
+      const episodes = [];
+      for (let i = 0; i < groups.length; i++) {
+        const grp = groups[i];
+        const combined = grp.map(t => t.text).join('\n\n');
+        const totalChars = grp.reduce((s, t) => s + t.chars, 0);
+        const tmpl = await TemplateManager.get('episode_title');
+        let title = '（サブタイトル未生成）';
+        try {
+          title = await apiClient.call(tmpl.system, buildPrompt(tmpl.user, { manuscript: combined.slice(0, 800) }), { maxTokens: 60 });
+          title = title.replace(/[「」\n]/g, '').trim().slice(0, 20);
+        } catch {}
+        episodes.push({ ep: i + 1, title, sections: grp.map(t => t.idx), totalChars });
+      }
+
+      await ProjectState.set('stages.episodes', episodes);
+      showToast(`${episodes.length}話に再構成しました`, 'success');
+      await this.render8(container);
     } catch (e) { showToast(e.message, 'error'); }
     finally { btn.disabled = false; btn.classList.remove('loading'); }
   },

@@ -2,80 +2,54 @@
 
 const Exporter = {
 
+  // 完成版本文：話付番・サブタイトル・節内テキストを階層的に出力
   async exportManuscript() {
     const state = await ProjectState.load();
-    const chapters = state.stages.chapters.list || [];
-    const drafts = state.stages.drafts || {};
-    const name = state.meta.name || '無題';
+    const name     = state.meta.name || '無題';
+    const episodes = state.stages.episodes || [];
+    const polished = state.stages.polished || {};
+    const drafts   = state.stages.drafts   || {};
+    const sections = state.stages.chapters.list || [];
 
     let md = `# ${name}\n\n`;
-    md += `> 総字数目標：${state.meta.totalChars?.toLocaleString() || '—'}字\n`;
-    md += `> ジャンル：${state.meta.genre || '—'}\n`;
-    md += `> テーマ：${state.meta.theme || '—'}\n\n---\n\n`;
+    md += `> ジャンル：${state.meta.genre || '—'}　テーマ：${state.meta.theme || '—'}　感情曲線：${state.meta.arcType || '—'}\n\n---\n\n`;
 
-    if (chapters.length > 0) {
-      chapters.forEach((c, i) => {
-        md += `## 第${c.chapter_num || (i+1)}章　${c.title || ''}\n\n`;
-        md += drafts[i]?.draft || '（下書き未作成）';
-        md += '\n\n---\n\n';
-      });
+    if (episodes.length > 0) {
+      // 話構造あり：### 第N話「サブタイトル」 → #### 第M節（本文は節内に埋め込み）
+      for (const ep of episodes) {
+        md += `### 第${ep.ep}話「${ep.title}」\n\n`;
+        for (const secIdx of ep.sections) {
+          const sec  = sections[secIdx];
+          const text = polished[secIdx] || drafts[secIdx]?.draft || '';
+          // 節見出しは画面表示用に付記するが本文には不要（仕様：本文中表記不要）
+          // ただし画面表示のため #### を付与
+          if (sec?.title) md += `#### 節「${sec.title}」\n\n`;
+          md += text + '\n\n';
+        }
+        md += '---\n\n';
+      }
     } else {
-      const allDrafts = Object.values(drafts);
-      allDrafts.forEach((d, i) => {
-        md += `## 第${i+1}章\n\n${d.draft || ''}\n\n---\n\n`;
+      // 話構造なし：節テキストをそのまま出力
+      sections.forEach((sec, i) => {
+        const text = polished[i] || drafts[i]?.draft || '';
+        if (!text) return;
+        md += `#### 第${sec.chapter_num || (i+1)}節「${sec.title || ''}」\n\n${text}\n\n---\n\n`;
       });
     }
 
-    this._download(`${name}_本文.md`, md);
-  },
-
-  async exportPlot() {
-    const state = await ProjectState.load();
-    const name = state.meta.name || '無題';
-    let md = `# ${name} — プロット資料\n\n`;
-    md += `## コンセプト決定稿\n\n${state.stages.concept.finalText || '未設定'}\n\n---\n\n`;
-    md += `## プロット（三幕構成）\n\n### 第一幕\n${state.stages.plot.acts?.act1 || '未設定'}\n\n### 第二幕\n${state.stages.plot.acts?.act2 || '未設定'}\n\n### 第三幕\n${state.stages.plot.acts?.act3 || '未設定'}\n\n---\n\n`;
-    md += `## 章構成\n\n${state.stages.chapters.raw || '未設定'}\n`;
-    this._download(`${name}_プロット.md`, md);
-  },
-
-  async exportCharacters() {
-    const state = await ProjectState.load();
-    const name = state.meta.name || '無題';
-    let md = `# ${name} — キャラクターシート\n\n${state.stages.characters.raw || '未設定'}\n`;
-    this._download(`${name}_キャラクター.md`, md);
-  },
-
-  async exportVisualPrompts() {
-    const state = await ProjectState.load();
-    const name = state.meta.name || '無題';
-    const v = state.stages.visual || {};
-    let md = `# ${name} — ビジュアル生成プロンプト\n\n`;
-    md += `## キャラクタービジュアル\n\n${v.character?.raw || '未生成'}\n\n`;
-    md += `## クライマックスシーン\n\n${v.scene?.raw || '未生成'}\n`;
-    this._download(`${name}_ビジュアルプロンプト.md`, md);
-  },
-
-  async exportNouns() {
-    const state = await ProjectState.load();
-    const name = state.meta.name || '無題';
-    const nouns = state.nouns || [];
-    let md = `# ${name} — 固有名詞リスト\n\n`;
-    nouns.forEach(n => { md += `- ${n.text}${n.note ? `（${n.note}）` : ''}\n`; });
-    this._download(`${name}_固有名詞.md`, md);
+    this._download(`${name}_完成版.md`, md);
   },
 
   async exportAll() {
     const state = await ProjectState.load();
     const name = state.meta.name || '無題';
-    const json = JSON.stringify(state, null, 2);
-    this._download(`${name}_project.json`, json, 'application/json');
+    this._download(`${name}_project.json`, JSON.stringify(state, null, 2), 'application/json');
   },
 
   _download(filename, content, mime = 'text/markdown;charset=utf-8') {
     const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
