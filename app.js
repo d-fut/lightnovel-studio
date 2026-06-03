@@ -4,6 +4,20 @@
 let currentPage = 'pipeline';
 let currentStage = 0;
 
+// 工程一覧（ドロップダウン用）
+const STAGE_LABELS = [
+  { num: 0,  label: 'INIT プロジェクト設定' },
+  { num: 1,  label: '01 コンセプト・世界観' },
+  { num: 2,  label: '02 プロット構築' },
+  { num: 3,  label: '03 キャラクター設計' },
+  { num: 4,  label: '04 節立て・構成' },
+  { num: 5,  label: '05 節ごとの下書き' },
+  { num: 6,  label: '06 整合性チェック' },
+  { num: 7,  label: '07 文体統一・改稿' },
+  { num: 8,  label: '08 最終仕上げ・話再構成' },
+  { num: 9,  label: 'VIS ビジュアル生成' },
+];
+
 function navigatePage(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -13,6 +27,9 @@ function navigatePage(page) {
 }
 
 async function navigateStage(stageNum) {
+  // パイプラインページに強制移動
+  if (currentPage !== 'pipeline') navigatePage('pipeline');
+
   currentStage = stageNum;
   document.querySelectorAll('.stage-item').forEach(el => el.classList.remove('active'));
   document.querySelector(`.stage-item[data-stage="${stageNum}"]`)?.classList.add('active');
@@ -26,6 +43,9 @@ async function navigateStage(stageNum) {
     container.innerHTML = `<div style="padding:40px;color:var(--danger)">エラー: ${e.message}</div>`;
     console.error(e);
   }
+
+  // グラフをサイドバーに再描画
+  EmotionGraph.drawSidebar();
 }
 
 function unlockStage(num) {
@@ -39,6 +59,315 @@ function updateStageStatus(num, status) {
   el.querySelector('.stage-status-icon').textContent = status === 'done' ? '✓' : '●';
   if (status === 'done') el.classList.add('done');
 }
+
+// ===== Pipeline Dropdown (スマホ対応) =====
+function initPipelineDropdown() {
+  const btn = document.querySelector('.nav-tab[data-page="pipeline"]');
+  if (!btn) return;
+
+  // ドロップダウンコンテナを生成
+  const wrapper = document.createElement('div');
+  wrapper.className = 'pipeline-nav-wrap';
+  btn.parentNode.insertBefore(wrapper, btn);
+  wrapper.appendChild(btn);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'pipeline-dropdown hidden';
+  dropdown.innerHTML = STAGE_LABELS.map(s => `
+    <button class="pipeline-dropdown-item" data-stage="${s.num}">${s.label}</button>
+  `).join('');
+  wrapper.appendChild(dropdown);
+
+  // ボタンクリックでドロップダウン開閉
+  btn.addEventListener('click', (e) => {
+    // パイプラインページ以外 or モバイル時はドロップダウン
+    const isMobile = window.innerWidth <= 640;
+    const isOnPipeline = currentPage === 'pipeline';
+
+    if (isMobile || isOnPipeline) {
+      e.stopPropagation();
+      dropdown.classList.toggle('hidden');
+    }
+  });
+
+  // ドロップダウン項目クリック
+  dropdown.querySelectorAll('.pipeline-dropdown-item').forEach(item => {
+    item.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const num = parseInt(item.dataset.stage);
+      const stageEl = document.querySelector(`.stage-item[data-stage="${num}"]`);
+      if (stageEl && stageEl.classList.contains('locked')) {
+        showToast('前の工程を完了してください', 'info');
+        dropdown.classList.add('hidden');
+        return;
+      }
+      dropdown.classList.add('hidden');
+      navigatePage('pipeline');
+      await navigateStage(num);
+    });
+  });
+
+  // 外側クリックで閉じる
+  document.addEventListener('click', () => dropdown.classList.add('hidden'));
+}
+
+// ===== Toast =====
+function showToast(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, duration);
+}
+
+// ===== Modal =====
+function showModal(title, bodyHTML, onConfirm) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = bodyHTML;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  document.getElementById('modal-confirm').onclick = () => {
+    hideModal();
+    onConfirm?.();
+  };
+}
+function hideModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+// ===== Emotion Graph Module =====
+// 感情データは meta.emotionPoints に保存
+// [{label, emotion, stage}] 形式
+// emotionを累積スコアに変換して折れ線グラフを描画
+
+const EmotionGraph = {
+
+  // テキストから感情値を簡易推定（↑→↓ 記号 or AI不要の語彙スコアリング）
+  parseFromText(text) {
+    // #### 第N節「」｜感情：↑ 形式を優先
+    const secMatches = [...text.matchAll(/####\s*第\d+節[^\n]*感情[：:]\s*([↑→↓])/g)];
+    if (secMatches.length > 0) {
+      return secMatches.map((m, i) => ({ label: `節${i+1}`, emotion: m[1] }));
+    }
+    // ### 第N幕 形式（プロット）→ 幕単位で粗く判定
+    const actMatches = [...text.matchAll(/###\s*(第[一二三]幕[^\n]*)/g)];
+    if (actMatches.length > 0) {
+      // 幕ごとのテキストを切り出してキーワードスコアリング
+      const acts = text.split(/(?=###\s*第[一二三]幕)/);
+      return acts.filter(a => /第[一二三]幕/.test(a)).map((a, i) => {
+        const label = ['第一幕', '第二幕', '第三幕'][i] || `幕${i+1}`;
+        const emotion = this._scoreText(a);
+        return { label, emotion };
+      });
+    }
+    // 段落ごとのキーワードスコアリング（下書きなど）
+    const paras = text.split(/\n{2,}/).filter(p => p.trim().length > 20);
+    const step = Math.max(1, Math.floor(paras.length / 6));
+    return paras.filter((_, i) => i % step === 0).map((p, i) => ({
+      label: `段落${i+1}`,
+      emotion: this._scoreText(p),
+    }));
+  },
+
+  // キーワードによる感情方向の粗い推定
+  _scoreText(text) {
+    const up   = (text.match(/希望|成功|解決|笑|喜|光|勝|救|発見|前進|高ま|興奮|嬉し/g) || []).length;
+    const down = (text.match(/絶望|失敗|喪失|死|涙|暗|負|孤独|恐怖|崩|悲し|苦し|後悔/g) || []).length;
+    if (up > down + 1) return '↑';
+    if (down > up + 1) return '↓';
+    return '→';
+  },
+
+  // 感情ポイントを保存（上書き）
+  async savePoints(points, sourceLabel) {
+    await ProjectState.set('meta.emotionPoints', { points, sourceLabel, updatedAt: Date.now() });
+    this.drawSidebar();
+    showToast(`感情曲線を更新しました（${sourceLabel}）`, 'success');
+  },
+
+  // 感情ポイントをロード
+  async loadPoints() {
+    const ep = await ProjectState.get('meta.emotionPoints');
+    return ep?.points || [];
+  },
+
+  // スコア列を生成（累積）
+  toScores(points) {
+    const scores = [0.5];
+    points.forEach(p => {
+      const last = scores[scores.length - 1];
+      const delta = p.emotion === '↑' ? 0.12 : p.emotion === '↓' ? -0.12 : 0;
+      scores.push(Math.min(0.92, Math.max(0.08, last + delta)));
+    });
+    return scores;
+  },
+
+  // 汎用Canvas描画（canvasEl: HTMLCanvasElement, points: array, mini: bool）
+  draw(canvasEl, points, mini = false) {
+    if (!canvasEl || points.length === 0) return;
+    const parent = canvasEl.parentElement;
+    canvasEl.width  = parent.clientWidth  || (mini ? 180 : 700);
+    canvasEl.height = mini ? 80 : 220;
+
+    const ctx = canvasEl.getContext('2d');
+    const W = canvasEl.width, H = canvasEl.height;
+    const pad = mini
+      ? { l: 8, r: 8, t: 8, b: 20 }
+      : { l: 40, r: 16, t: 16, b: 40 };
+    const gW = W - pad.l - pad.r;
+    const gH = H - pad.t - pad.b;
+
+    const scores = this.toScores(points);
+
+    ctx.clearRect(0, 0, W, H);
+
+    // グリッド（ミニは省略）
+    if (!mini) {
+      ctx.strokeStyle = '#2a2a3d'; ctx.lineWidth = 1;
+      [0.25, 0.5, 0.75].forEach(y => {
+        ctx.beginPath();
+        ctx.moveTo(pad.l, pad.t + gH * y);
+        ctx.lineTo(pad.l + gW, pad.t + gH * y);
+        ctx.stroke();
+      });
+      ctx.fillStyle = '#555577'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+      ctx.fillText('高', pad.l - 4, pad.t + 10);
+      ctx.fillText('中', pad.l - 4, pad.t + gH * 0.5 + 4);
+      ctx.fillText('低', pad.l - 4, pad.t + gH);
+    }
+
+    const pts = scores.map((s, i) => ({
+      x: pad.l + (i / Math.max(scores.length - 1, 1)) * gW,
+      y: pad.t + s * gH,
+    }));
+
+    // グラデーション
+    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gH);
+    grad.addColorStop(0, 'rgba(200,169,110,0.3)');
+    grad.addColorStop(1, 'rgba(200,169,110,0)');
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pad.t + gH);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length - 1].x, pad.t + gH);
+    ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+
+    // 折れ線
+    ctx.beginPath();
+    ctx.strokeStyle = '#c8a96e'; ctx.lineWidth = mini ? 1.5 : 2;
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+
+    // ドットとラベル（ミニは簡略）
+    pts.slice(1).forEach((p, i) => {
+      const pt = points[i];
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, mini ? 2 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = pt.emotion === '↑' ? '#5cb87e' : pt.emotion === '↓' ? '#c45454' : '#7eb8d4';
+      ctx.fill();
+      if (!mini) {
+        ctx.fillStyle = ctx.fillStyle;
+        ctx.font = '10px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(pt.emotion, p.x, p.y - 9);
+        ctx.fillStyle = '#555577';
+        ctx.fillText(pt.label || `${i+1}`, p.x, pad.t + gH + 14);
+      }
+    });
+
+    // ミニ：ソースラベル
+    if (mini) {
+      const ep = { sourceLabel: '' }; // ラベルはサイドバー側で付与
+    }
+  },
+
+  // サイドバーのミニグラフを更新
+  async drawSidebar() {
+    const canvas = document.getElementById('sidebar-emotion-canvas');
+    if (!canvas) return;
+    const points = await this.loadPoints();
+    if (points.length === 0) {
+      canvas.style.display = 'none';
+      const label = document.getElementById('sidebar-emotion-label');
+      if (label) label.textContent = '（データなし）';
+      return;
+    }
+    canvas.style.display = 'block';
+    this.draw(canvas, points, true);
+    // ソースラベル更新
+    const ep = await ProjectState.get('meta.emotionPoints');
+    const label = document.getElementById('sidebar-emotion-label');
+    if (label) label.textContent = ep?.sourceLabel || '';
+  },
+
+  // 各工程ページに埋め込む「感情曲線」セクションのHTML
+  sectionHTML(stageSource) {
+    return `
+      <div class="emotion-section" id="emotion-section-${stageSource}">
+        <div class="emotion-section-header">
+          <span class="emotion-section-title">📈 感情曲線</span>
+          <button class="btn-secondary btn-sm" id="emotion-update-btn-${stageSource}">
+            このテキストから更新
+          </button>
+          <button class="btn-secondary btn-sm" id="emotion-expand-btn-${stageSource}">
+            拡大表示
+          </button>
+        </div>
+        <div class="emotion-inline-wrap">
+          <canvas id="emotion-inline-${stageSource}"></canvas>
+          <span class="emotion-source-label" id="emotion-source-label-${stageSource}"></span>
+        </div>
+      </div>
+    `;
+  },
+
+  // 各工程の感情セクションを初期化（描画＋ボタン登録）
+  async initSection(stageSource, getTextFn) {
+    const canvas = document.getElementById(`emotion-inline-${stageSource}`);
+    const label  = document.getElementById(`emotion-source-label-${stageSource}`);
+    const updateBtn = document.getElementById(`emotion-update-btn-${stageSource}`);
+    const expandBtn = document.getElementById(`emotion-expand-btn-${stageSource}`);
+
+    // 現在の保存済みグラフを描画
+    const points = await this.loadPoints();
+    const ep = await ProjectState.get('meta.emotionPoints');
+    if (canvas && points.length > 0) {
+      setTimeout(() => this.draw(canvas, points, false), 30);
+      if (label) label.textContent = ep?.sourceLabel ? `最終更新：${ep.sourceLabel}` : '';
+    }
+
+    // 「このテキストから更新」ボタン
+    if (updateBtn) {
+      updateBtn.onclick = async () => {
+        const text = getTextFn();
+        if (!text || text.trim().length < 50) { showToast('テキストが短すぎます', 'info'); return; }
+        updateBtn.disabled = true; updateBtn.textContent = '解析中…';
+        try {
+          const points = this.parseFromText(text);
+          if (points.length === 0) { showToast('感情値を検出できませんでした', 'info'); return; }
+          await this.savePoints(points, stageSource);
+          setTimeout(() => this.draw(canvas, points, false), 30);
+          if (label) label.textContent = `最終更新：${stageSource}`;
+        } finally {
+          updateBtn.disabled = false; updateBtn.textContent = 'このテキストから更新';
+        }
+      };
+    }
+
+    // 「拡大表示」ボタン → モーダルで大きなグラフを表示
+    if (expandBtn) {
+      expandBtn.onclick = async () => {
+        const pts = await this.loadPoints();
+        if (pts.length === 0) { showToast('感情データがありません', 'info'); return; }
+        showModal('感情曲線グラフ', `<div style="width:100%"><canvas id="modal-emotion-canvas" style="width:100%"></canvas></div>`, null);
+        setTimeout(() => {
+          const mc = document.getElementById('modal-emotion-canvas');
+          if (mc) this.draw(mc, pts, false);
+        }, 50);
+      };
+    }
+  },
+};
+
 
 // ===== Toast =====
 function showToast(message, type = 'info', duration = 3000) {
@@ -278,6 +607,9 @@ function initExportPage() {
 
 // ===== Init =====
 async function init() {
+  // Init pipeline dropdown
+  initPipelineDropdown();
+
   // Nav
   document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.onclick = () => {
@@ -344,6 +676,9 @@ async function init() {
 
   // Restore nouns
   renderNounList(nouns || []);
+
+  // Sidebar emotion graph initial draw
+  EmotionGraph.drawSidebar();
 
   // Init sub-pages
   initSettings();

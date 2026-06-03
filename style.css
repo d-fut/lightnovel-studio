@@ -1087,3 +1087,90 @@ textarea.draft { min-height: 400px; font-family: var(--serif); font-size: 14px; 
   .nav-tabs { gap: 0; }
   .nav-tab { padding: 6px 8px; font-size: 12px; }
 }
+
+/* ===== PIPELINE DROPDOWN (スマホ対応) ===== */
+.pipeline-nav-wrap {
+  position: relative;
+  display: inline-block;
+}
+.pipeline-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 200;
+  background: var(--bg2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  min-width: 220px;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+}
+.pipeline-dropdown-item {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.pipeline-dropdown-item:hover { background: var(--bg3); color: var(--accent); }
+
+/* ===== EMOTION SECTION (各工程に埋め込み) ===== */
+.emotion-section {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-top: 8px;
+}
+.emotion-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.emotion-section-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex: 1;
+}
+.emotion-inline-wrap {
+  position: relative;
+}
+.emotion-inline-wrap canvas {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius);
+  background: var(--bg3);
+}
+.emotion-source-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 4px;
+  text-align: right;
+}
+
+/* サイドバーのグラフパネル */
+.sidebar-emotion-panel {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-emotion-panel canvas {
+  border-radius: var(--radius);
+  background: var(--bg3);
+  margin-top: 6px;
+}
+
+/* モーダルキャンバスはレスポンシブ */
+#modal-emotion-canvas { width: 100% !important; }

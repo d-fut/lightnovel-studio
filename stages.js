@@ -388,6 +388,18 @@ const StageRenderers = {
       showToast('プロット確定', 'success');
       navigateStage(3);
     };
+
+    // 感情曲線セクションを末尾に追加
+    const emotionEl = document.createElement('div');
+    emotionEl.innerHTML = EmotionGraph.sectionHTML('02_プロット');
+    container.appendChild(emotionEl);
+    await EmotionGraph.initSection('02_プロット', () => {
+      return [
+        document.getElementById('plot-act1')?.value || '',
+        document.getElementById('plot-act2')?.value || '',
+        document.getElementById('plot-act3')?.value || '',
+      ].join('\n\n');
+    });
   },
 
   async _savePlot() {
@@ -583,7 +595,15 @@ const StageRenderers = {
         document.querySelectorAll('.s4-panel').forEach(p => p.classList.add('hidden'));
         btn.classList.add('active');
         document.getElementById(`s4-${btn.dataset.tab}`).classList.remove('hidden');
-        if (btn.dataset.tab === 'graph' && hasGraph) this._drawEmotionGraph(list);
+        if (btn.dataset.tab === 'graph' && hasGraph) {
+          // 確定済みリストを再取得して描画（clientWidth確定後に実行）
+          setTimeout(async () => {
+            const st = await ProjectState.load();
+            const pts = st.stages.chapters.list || [];
+            const canvas = document.getElementById('emotion-canvas');
+            if (canvas && pts.length > 0) EmotionGraph.draw(canvas, pts, false);
+          }, 50);
+        }
       });
     });
 
@@ -597,7 +617,6 @@ const StageRenderers = {
       if (el) {
         const raw = el.value;
         await ProjectState.set('stages.chapters.raw', raw);
-        // #### 第N節「タイトル」｜目安X字 ｜ 感情：↑/→/↓
         const secBlocks = raw.split(/(?=####\s*第\d+節)/);
         const list = secBlocks
           .filter(b => /####\s*第\d+節/.test(b))
@@ -625,7 +644,10 @@ const StageRenderers = {
 
         if (list.length > 0) {
           await ProjectState.set('stages.chapters.list', list);
-          showToast(`${list.length}節を解析してリスト化しました`, 'success');
+          // 節の感情データをグラフに自動反映
+          const emotionPts = list.map(s => ({ label: `節${s.chapter_num}`, emotion: s.emotion }));
+          await EmotionGraph.savePoints(emotionPts, '04_節構成');
+          showToast(`${list.length}節を解析・感情曲線を更新しました`, 'success');
         } else {
           const fallback = [{ chapter_num: 1, title: '（タイトル未解析）', emotion: '→', pov: '', events: '', opening_hook: '', ending_hook: '', hook_type: '', target_chars: 2500 }];
           await ProjectState.set('stages.chapters.list', fallback);
@@ -636,74 +658,14 @@ const StageRenderers = {
       updateStageStatus(4, 'done'); unlockStage(5);
       navigateStage(5);
     };
-  },
 
-  // 感情曲線グラフ（Canvas）
-  _drawEmotionGraph(sections) {
-    const canvas = document.getElementById('emotion-canvas');
-    if (!canvas) return;
-    const parent = canvas.parentElement;
-    canvas.width = parent.clientWidth || 700;
-    canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    const pad = { l: 48, r: 24, t: 20, b: 48 };
-    const gW = W - pad.l - pad.r, gH = H - pad.t - pad.b;
-
-    // 累積スコアで折れ線
-    const scores = [0.5];
-    sections.forEach(s => {
-      const last = scores[scores.length - 1];
-      const delta = s.emotion === '↑' ? 0.12 : s.emotion === '↓' ? -0.12 : 0;
-      scores.push(Math.min(0.92, Math.max(0.08, last + delta)));
+    // 感情曲線セクションを末尾に追加
+    const emotionEl = document.createElement('div');
+    emotionEl.innerHTML = EmotionGraph.sectionHTML('04_節構成');
+    container.appendChild(emotionEl);
+    await EmotionGraph.initSection('04_節構成', () => {
+      return document.getElementById('chap-raw-edit')?.value || '';
     });
-
-    ctx.clearRect(0, 0, W, H);
-    ctx.strokeStyle = '#2a2a3d'; ctx.lineWidth = 1;
-    [0.2, 0.4, 0.6, 0.8].forEach(y => {
-      ctx.beginPath();
-      ctx.moveTo(pad.l, pad.t + gH * y);
-      ctx.lineTo(pad.l + gW, pad.t + gH * y);
-      ctx.stroke();
-    });
-    ctx.fillStyle = '#666688'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
-    ctx.fillText('高', pad.l - 6, pad.t + 14);
-    ctx.fillText('中', pad.l - 6, pad.t + gH * 0.5 + 4);
-    ctx.fillText('低', pad.l - 6, pad.t + gH - 4);
-
-    const pts = scores.map((s, i) => ({
-      x: pad.l + (i / (scores.length - 1)) * gW,
-      y: pad.t + s * gH,
-    }));
-
-    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gH);
-    grad.addColorStop(0, 'rgba(200,169,110,0.25)');
-    grad.addColorStop(1, 'rgba(200,169,110,0)');
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pad.t + gH);
-    pts.forEach(p => ctx.lineTo(p.x, p.y));
-    ctx.lineTo(pts[pts.length - 1].x, pad.t + gH);
-    ctx.closePath();
-    ctx.fillStyle = grad; ctx.fill();
-
-    ctx.beginPath();
-    ctx.strokeStyle = '#c8a96e'; ctx.lineWidth = 2.5;
-    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-    ctx.stroke();
-
-    ctx.font = '11px monospace'; ctx.textAlign = 'center';
-    pts.slice(1).forEach((p, i) => {
-      const sec = sections[i];
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#c8a96e'; ctx.fill();
-      ctx.fillStyle = sec.emotion === '↑' ? '#5cb87e' : sec.emotion === '↓' ? '#c45454' : '#7eb8d4';
-      ctx.fillText(sec.emotion, p.x, p.y - 10);
-      ctx.fillStyle = '#666688';
-      ctx.fillText(`${i+1}`, p.x, pad.t + gH + 16);
-    });
-    ctx.fillStyle = '#666688'; ctx.textAlign = 'center';
-    ctx.fillText('節番号', pad.l + gW / 2, H - 4);
   },
 
   async _runChapGen() {
@@ -838,6 +800,16 @@ const StageRenderers = {
       updateStageStatus(5, 'done'); unlockStage(6);
       showToast('下書き工程完了', 'success'); navigateStage(6);
     };
+
+    // 感情曲線セクション（下書きテキストから解析）
+    const emotionEl = document.createElement('div');
+    emotionEl.innerHTML = EmotionGraph.sectionHTML('05_下書き');
+    container.appendChild(emotionEl);
+    await EmotionGraph.initSection('05_下書き', () => {
+      // 全節の下書きを結合して解析
+      const st_drafts = ProjectState._cache?.stages?.drafts || {};
+      return Object.values(st_drafts).map(d => d.draft || '').join('\n\n');
+    });
   },
 
   async _switchChapter(idx) {

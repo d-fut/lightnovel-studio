@@ -94,6 +94,15 @@
               <span class="stage-status-icon">○</span>
             </div>
           </div>
+          <!-- Emotion Graph (mini) -->
+          <div class="sidebar-emotion-panel">
+            <div class="noun-header">
+              <span>感情曲線</span>
+              <span class="emotion-source-label" id="sidebar-emotion-label" style="font-size:9px;color:var(--text-muted)"></span>
+            </div>
+            <canvas id="sidebar-emotion-canvas" style="display:none;width:100%;border-radius:4px"></canvas>
+            <p id="sidebar-emotion-empty" style="font-size:10px;color:var(--text-muted);padding:4px 0">（各工程で更新）</p>
+          </div>
           <!-- Noun List -->
           <div class="noun-panel">
             <div class="noun-header">
